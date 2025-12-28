@@ -15,3 +15,7 @@ object_textures/
 table_textures/
 curated_table_textures/
 eval_results/
+.vscode/
+.idea/
+*.zip
+*.pth

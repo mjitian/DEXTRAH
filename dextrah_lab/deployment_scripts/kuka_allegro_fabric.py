@@ -25,6 +25,7 @@ from fabrics_sim.integrator.integrators import DisplacementIntegrator
 from fabrics_sim.worlds.world_mesh_model import WorldMeshesModel
 from fabrics_sim.utils.utils import initialize_warp, capture_fabric
 
+
 class KukaAllegroFabricNode(Node):
     def __init__(self, speed_mode):
         """
@@ -38,9 +39,9 @@ class KukaAllegroFabricNode(Node):
         elapse_time = time.time() - start_time
         print(f"<done> elapse: {elapse_time}")
 
-        self.iters_per_cycle = 1 # default to "normal" speed
+        self.iters_per_cycle = 1  # default to "normal" speed
         if speed_mode == "normal":
-            self.iters_per_cycle = 1 
+            self.iters_per_cycle = 1
         elif speed_mode == "fast":
             self.iters_per_cycle = 2
 
@@ -56,17 +57,17 @@ class KukaAllegroFabricNode(Node):
         ]
         self.hand_controlled_joints = [
             'index_joint_0', 'index_joint_1', 'index_joint_2', 'index_joint_3',
-             'middle_joint_0', 'middle_joint_1', 'middle_joint_2', 'middle_joint_3',
-             'ring_joint_0', 'ring_joint_1', 'ring_joint_2', 'ring_joint_3',
-             'thumb_joint_0', 'thumb_joint_1', 'thumb_joint_2', 'thumb_joint_3'
-         ]
+            'middle_joint_0', 'middle_joint_1', 'middle_joint_2', 'middle_joint_3',
+            'ring_joint_0', 'ring_joint_1', 'ring_joint_2', 'ring_joint_3',
+            'thumb_joint_0', 'thumb_joint_1', 'thumb_joint_2', 'thumb_joint_3'
+        ]
 
         # Timestep for publishing fabric commands out
         self.rate_hz = 60.
-        self.publish_dt = 1./self.rate_hz # sec
+        self.publish_dt = 1. / self.rate_hz  # sec
         # Timestep for integrating the fabric state
-        self.fabric_dt = 1./self.rate_hz # sec
-        
+        self.fabric_dt = 1. / self.rate_hz  # sec
+
         # Declare position command signals for the arm PD controller and boolean for gripper
         self._kuka_joint_position_command_lock = Lock()
         self._allegro_joint_position_command_lock = Lock()
@@ -86,13 +87,13 @@ class KukaAllegroFabricNode(Node):
         self._palm_target_lock = Lock()
         self.palm_target = None
         self.hand_target = None
-        
+
         # Robot feedback health monitoring
         self.robot_synced = False
         self.kuka_feedback_time = time.time()
         self.allegro_feedback_time = time.time()
-        self.robot_feedback_time_elapsed = 0. # sec
-        self.heartbeat_time_threshold = .1 # sec
+        self.robot_feedback_time_elapsed = 0.  # sec
+        self.heartbeat_time_threshold = .1  # sec
 
         # Set up pub/sub for kuka
         self._kuka_pub = self.create_publisher(JointState, "/kuka/joint_commands", 1)
@@ -130,35 +131,35 @@ class KukaAllegroFabricNode(Node):
         # Set up publisher for broadcasting fabric state as feedback
         self._kuka_allegro_fabric_states_lock = Lock()
         self.kuka_allegro_fabric_states_msg = JointState()
-        self.kuka_allegro_fabric_states_msg.name =\
+        self.kuka_allegro_fabric_states_msg.name = \
             ['joint_0', 'joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6',
              'index_joint_0', 'index_joint_1', 'index_joint_2', 'index_joint_3',
              'middle_joint_0', 'middle_joint_1', 'middle_joint_2', 'middle_joint_3',
              'ring_joint_0', 'ring_joint_1', 'ring_joint_2', 'ring_joint_3',
              'thumb_joint_0', 'thumb_joint_1', 'thumb_joint_2', 'thumb_joint_3']
-        self._kuka_allegro_fabric_pub =\
+        self._kuka_allegro_fabric_pub = \
             self.create_publisher(JointState, "/kuka_allegro_fabric/joint_states", 1)
-        self._kuka_allegro_fabric_timer =\
+        self._kuka_allegro_fabric_timer = \
             self.create_timer(self.publish_dt, self._kuka_allegro_fabric_pub_callback)
 
-#    def _set_target_pose(self, pose):
-#        msg = Pose()
-#        msg.position.x = pose.p[0]
-#        msg.position.y = pose.p[1]
-#        msg.position.z = pose.p[2]
-#        msg.orientation.w = pose.q[0]
-#        msg.orientation.x = pose.q[1]
-#        msg.orientation.y = pose.q[2]
-#        msg.orientation.z = pose.q[3]
-#        self._nex10_fabric_pose_command_sub_callback(msg)
-#
-#    def _set_cspace_position_target(self, posture_config):
-#        # Get the posture config data into the following member. (Assigns line by line to bridge
-#        # from numpy cpu to pytorch gpu. TODO: is there a better way to do this?)
-#        with self.cspace_position_target_lock:
-#            if self.cspace_position_target is not None:
-#                for i in range(len(posture_config)):
-#                    self.cspace_position_target[0,i] = posture_config[i]
+    #    def _set_target_pose(self, pose):
+    #        msg = Pose()
+    #        msg.position.x = pose.p[0]
+    #        msg.position.y = pose.p[1]
+    #        msg.position.z = pose.p[2]
+    #        msg.orientation.w = pose.q[0]
+    #        msg.orientation.x = pose.q[1]
+    #        msg.orientation.y = pose.q[2]
+    #        msg.orientation.z = pose.q[3]
+    #        self._nex10_fabric_pose_command_sub_callback(msg)
+    #
+    #    def _set_cspace_position_target(self, posture_config):
+    #        # Get the posture config data into the following member. (Assigns line by line to bridge
+    #        # from numpy cpu to pytorch gpu. TODO: is there a better way to do this?)
+    #        with self.cspace_position_target_lock:
+    #            if self.cspace_position_target is not None:
+    #                for i in range(len(posture_config)):
+    #                    self.cspace_position_target[0,i] = posture_config[i]
 
     def _kuka_pub_callback(self):
         """
@@ -167,16 +168,16 @@ class KukaAllegroFabricNode(Node):
         """
         with self._kuka_joint_position_command_lock:
             if self._kuka_joint_position_command is not None and \
-               self._kuka_joint_velocity_command is not None:
+                    self._kuka_joint_velocity_command is not None:
                 msg = JointState()
                 msg.name = self.arm_controlled_joints
                 msg.header.stamp = self.get_clock().now().to_msg()
                 msg.position = self._kuka_joint_position_command
-                msg.velocity = [0.] * 7 #self._kuka_joint_velocity_command
-                #msg.velocity = self._kuka_joint_velocity_command
+                msg.velocity = [0.] * 7  # self._kuka_joint_velocity_command
+                # msg.velocity = self._kuka_joint_velocity_command
                 msg.effort = []
                 self._kuka_pub.publish(msg)
-    
+
     def _kuka_sub_callback(self, msg):
         """
         Acquires the feedback time, sets the measured joint position for the
@@ -200,7 +201,7 @@ class KukaAllegroFabricNode(Node):
         """
         with self._allegro_joint_position_command_lock:
             if self._allegro_joint_position_command is not None and \
-               self._allegro_joint_velocity_command is not None:
+                    self._allegro_joint_velocity_command is not None:
                 msg = JointState()
                 msg.name = self.hand_controlled_joints
                 msg.header.stamp = self.get_clock().now().to_msg()
@@ -224,7 +225,7 @@ class KukaAllegroFabricNode(Node):
             if self._allegro_joint_position_command is None or self._allegro_joint_velocity_command is None:
                 self._allegro_joint_position_command = msg.position
                 self._allegro_joint_velocity_command = len(msg.velocity) * [0.]
-            
+
     def _kuka_allegro_fabric_pose_command_sub_callback(self, msg):
         """
         Sets the palm pose target coming in from the ROS topic.
@@ -242,17 +243,17 @@ class KukaAllegroFabricNode(Node):
         """
         with self._hand_target_lock:
             self.hand_target.copy_(torch.tensor([list(msg.position)], device=self.device))
-            
+
     def _kuka_allegro_fabric_pub_callback(self):
         """
         Writes out the full fabric state on the ROS topic.
         """
         with self._kuka_allegro_fabric_states_lock:
-            if len(self.kuka_allegro_fabric_states_msg.position) > 0 and\
-               len(self.kuka_allegro_fabric_states_msg.velocity) > 0:
+            if len(self.kuka_allegro_fabric_states_msg.position) > 0 and \
+                    len(self.kuka_allegro_fabric_states_msg.velocity) > 0:
                 self.kuka_allegro_fabric_states_msg.header.stamp = self.get_clock().now().to_msg()
                 self._kuka_allegro_fabric_pub.publish(self.kuka_allegro_fabric_states_msg)
-    
+
     def robot_feedback_heartbeat(self):
         """
         Calculates the heartbeat to the real robot such that processes can be
@@ -295,7 +296,7 @@ class KukaAllegroFabricNode(Node):
             self.kuka_allegro_fabric_states_msg.position = list(q[0, :])
             self.kuka_allegro_fabric_states_msg.velocity = list(qd[0, :])
             self.kuka_allegro_fabric_states_msg.effort = list(qdd[0, :])
-            
+
     def run(self):
         # Initialize fabric-----------------------
         # Declare batch size and number of joints
@@ -304,11 +305,11 @@ class KukaAllegroFabricNode(Node):
 
         # Provide initial commands for the fabric
         # Palm pose target
-        self.palm_target =\
-            torch.tensor([[-0.6868,  0.0320,  0.685, -2.3873, -0.0824,  3.1301]], device=self.device)
+        self.palm_target = \
+            torch.tensor([[-0.6868, 0.0320, 0.685, -2.3873, -0.0824, 3.1301]], device=self.device)
 
         # Hand PCA target
-        self.hand_target =\
+        self.hand_target = \
             torch.tensor([[1.5, 1.5, 0., 0.5, -0.25]], device=self.device)
 
         # This creates a world model that book keeps all the meshes
@@ -332,7 +333,7 @@ class KukaAllegroFabricNode(Node):
 
         # Create integrator for the fabric
         kuka_allegro_integrator = DisplacementIntegrator(kuka_allegro_fabric)
-        
+
         # Allocate for fabric state
         q = torch.zeros(batch_size, num_dof, device=self.device)
         qd = torch.zeros(batch_size, num_dof, device=self.device)
@@ -353,7 +354,7 @@ class KukaAllegroFabricNode(Node):
                     kuka_allegro_fabric, q, qd, qdd, self.fabric_dt,
                     kuka_allegro_integrator, inputs, self.device)
                 print('Captured fabric.')
-        
+
         # Sleep a little to ensure feedback subs have received feedback
         time.sleep(self.heartbeat_time_threshold + 0.2)
 
@@ -381,7 +382,7 @@ class KukaAllegroFabricNode(Node):
                 q[0, 7:].copy_(torch.tensor(self._allegro_joint_position, device=self.device))
 
                 # Set joint commands, which will be published over ROS
-                self.set_joint_commands(q.detach().cpu().numpy().astype('float'), 
+                self.set_joint_commands(q.detach().cpu().numpy().astype('float'),
                                         qd.detach().cpu().numpy().astype('float'),
                                         qdd.detach().cpu().numpy().astype('float'))
 
@@ -389,7 +390,7 @@ class KukaAllegroFabricNode(Node):
                 time.sleep(1.)
 
                 self.robot_synced = True
-            
+
             # Set start time
             start = time.time()
 
@@ -408,7 +409,7 @@ class KukaAllegroFabricNode(Node):
                         qdd.copy_(qdd_new)
 
             # Set joint commands, which will be published over ROS
-            self.set_joint_commands(q.detach().cpu().numpy().astype('float'), 
+            self.set_joint_commands(q.detach().cpu().numpy().astype('float'),
                                     qd.detach().cpu().numpy().astype('float'),
                                     qdd.detach().cpu().numpy().astype('float'))
 
@@ -427,10 +428,11 @@ class KukaAllegroFabricNode(Node):
             else:
                 loop_time_filtered = alpha * loop_time + (1. - alpha) * loop_time_filtered
             if (control_iter % print_iter) == 0:
-                print('avg control rate', 1./loop_time_filtered)
+                print('avg control rate', 1. / loop_time_filtered)
 
             control_iter += 1
-            
+
+
 if __name__ == '__main__':
     # Parse the fabrics speed mode
     parser = argparse.ArgumentParser()
@@ -450,8 +452,8 @@ if __name__ == '__main__':
     speed_mode = args.speed_mode
     speed_modes = ["normal", "fast"]
     if speed_mode not in speed_modes:
-       print('Invalid speed mode. Please set it to "slow", "normal", "fast", or "superfast"')
-       sys.exit()
+        print('Invalid speed mode. Please set it to "slow", "normal", "fast", or "superfast"')
+        sys.exit()
 
     print("Starting Kuka Allegro fabric node")
     rclpy.init()

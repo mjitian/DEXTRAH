@@ -105,6 +105,8 @@ def main(env_cfg, agent_cfg: dict):
     ov_env = env.env
 
     parent_path = str(pathlib.Path(__file__).parent.parent.parent.resolve())
+
+    #agent
     agent_cfg_folder = "dextrah_lab/tasks/dextrah_kuka_allegro/agents"
 
     if ov_env.simulate_stereo:
