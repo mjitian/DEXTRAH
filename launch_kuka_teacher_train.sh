@@ -5,7 +5,7 @@ python -m torch.distributed.run --nnodes=1 --nproc_per_node=1 \
     --task=Dextrah-Kuka-Allegro \
     --seed -1 \
     --distributed \
-    --num_envs 4096 \
+    --num_envs 64 \
     agent.params.config.minibatch_size=16384 \
     agent.params.config.central_value_config.minibatch_size=16384 \
     agent.params.config.learning_rate=0.0001 \

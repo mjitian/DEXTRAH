@@ -9,6 +9,7 @@
 
 import argparse
 import sys
+
 from isaaclab.app import AppLauncher
 
 # add argparse arguments
@@ -85,9 +86,6 @@ from isaaclab.utils.io import dump_pickle, dump_yaml
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.hydra import hydra_task_config
 from isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-from dextrah_lab.tasks.tiangong import gym_setup
 
 
 @hydra_task_config(args_cli.task, "rl_games_cfg_entry_point")
