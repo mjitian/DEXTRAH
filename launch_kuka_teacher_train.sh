@@ -1,5 +1,5 @@
 cd ~/DEXTRAH/dextrah_lab/rl_games
-python -m torch.distributed.run --nnodes=1 --nproc_per_node=1\
+python -m torch.distributed.run --nnodes=1 --nproc_per_node=1 \
   train.py \
     --headless \
     --task=Dextrah-Kuka-Allegro \

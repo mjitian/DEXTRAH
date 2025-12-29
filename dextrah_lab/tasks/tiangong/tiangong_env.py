@@ -268,7 +268,7 @@ class TiangongEnv(DirectRLEnv):
         if self.cfg.objects_dir not in self.cfg.valid_objects_dir:
             raise ValueError(f"Need to specify valid directory of objects for training: {self.cfg.valid_objects_dir}")
         num_unique_objects = self.find_num_unique_objects(self.cfg.objects_dir)
-        
+
         # TODO 根据天工任务调整obs和state维度
         self.cfg.num_student_observations = 62
         self.cfg.num_teacher_observations = 70 + num_unique_objects
@@ -441,8 +441,17 @@ class TiangongEnv(DirectRLEnv):
         for i in range(self.num_envs):
             object_name = sub_dirs[self.multi_object_idx[i]]
             object_usd_path = objects_full_path + "/" + object_name + "/" + object_name + ".usd"
+
+            print('Object name', object_name)
+            print('object usd path', object_usd_path)
+
             object_prim_name = "object_" + str(i) + "_" + object_name
             prim_path = "/World/envs/" + "env_" + str(i) + "/object/" + object_prim_name
+
+            print('Object prim name', object_prim_name)
+            print('Object prim path', prim_path)
+            print('Object Scale', self.object_scale[i])
+
             # 物体配置（适配天工负载）
             object_cfg = RigidObjectCfg(
                 prim_path=prim_path,

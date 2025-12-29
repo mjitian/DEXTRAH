@@ -1,5 +1,5 @@
 cd ~/DEXTRAH/dextrah_lab/rl_games
-python -m torch.distributed.run --nnodes=1 --nproc_per_node=1\
+python -m torch.distributed.run --nnodes=1 --nproc_per_node=1 \
   train.py \
     --headless \
     --task=tiangong \
@@ -20,3 +20,4 @@ python -m torch.distributed.run --nnodes=1 --nproc_per_node=1\
     env.adr_custom_cfg_dict.reward_weights.lift_weight="[5.0, 0.0]" \
     env.max_pose_angle=45.0 \
     env.use_cuda_graph=True
+

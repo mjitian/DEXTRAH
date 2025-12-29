@@ -19,3 +19,4 @@ eval_results/
 .idea/
 *.zip
 *.pth
+*.prof
