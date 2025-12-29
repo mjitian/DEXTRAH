@@ -1,13 +1,14 @@
 cd ~/DEXTRAH/dextrah_lab/rl_games
+# 将num_envs, minibatch_size, central_value_config.minibatch_size改小，防止显存溢出
 python -m torch.distributed.run --nnodes=1 --nproc_per_node=1 \
   train.py \
     --headless \
     --task=tiangong \
     --seed -1 \
     --distributed \
-    --num_envs 4096 \
-    agent.params.config.minibatch_size=16384 \
-    agent.params.config.central_value_config.minibatch_size=16384 \
+    --num_envs 256 \
+    agent.params.config.minibatch_size=4096 \
+    agent.params.config.central_value_config.minibatch_size=4096 \
     agent.params.config.learning_rate=0.0001 \
     agent.params.config.horizon_length=16 \
     agent.params.config.mini_epochs=4 \
@@ -18,6 +19,6 @@ python -m torch.distributed.run --nnodes=1 --nproc_per_node=1 \
     env.adr_custom_cfg_dict.fabric_damping.gain="[10.0, 20.0]" \
     env.adr_custom_cfg_dict.reward_weights.finger_curl_reg="[-0.01, -0.01]" \
     env.adr_custom_cfg_dict.reward_weights.lift_weight="[5.0, 0.0]" \
-    env.max_pose_angle=45.0 \
-    env.use_cuda_graph=True
-
+    env.max_pose_angle=45.0
+    # 不明原因导致
+    # env.use_cuda_graph=True

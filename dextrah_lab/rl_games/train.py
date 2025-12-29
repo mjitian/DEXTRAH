@@ -64,8 +64,9 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import load_cfg_from_registry, parse_env_cfg
 from isaaclab_rl.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
 
-#import dextrah_lab.tasks.shadow_hand.gym_setup
 import dextrah_lab.tasks.dextrah_kuka_allegro.gym_setup
+# 添加天工gym环境
+import dextrah_lab.tasks.tiangong.gym_setup
 
 import time
 import wandb

@@ -115,7 +115,7 @@ class TiangongEnv(DirectRLEnv):
         self.robot_start_joint_pos = \
             torch.tensor([
                 # 右臂：肩俯仰/肩翻滚/肩偏航/肘俯仰/肘偏航/腕俯仰/腕翻滚
-                0., 0., 0., np.pi / 2, 0., 0., 0.,
+                0., 0., 0., -np.pi / 2, 0., 0., 0.,
                 # 手指：拇指/食指
                 0., 0.
             ], device=self.device)
@@ -130,7 +130,7 @@ class TiangongEnv(DirectRLEnv):
         self.curled_q = \
             torch.tensor([
                 # 右臂（手部卷曲）
-                0., 0., 0., np.pi / 2, 0., 0.0, 0.0,
+                # 0., 0., 0., np.pi / 2, 0., 0.0, 0.0,
                 # 手指（手部卷曲）
                 0.3, 0.3
             ], device=self.device)
@@ -727,7 +727,10 @@ class TiangongEnv(DirectRLEnv):
             self.hand_to_object_pos_error,
             self.object_to_object_goal_pos_error,
             self.object_vertical_error,
-            self.robot_dof_pos[:, 4:],  # 天工从第5个关节开始为手臂关节（对应原手指关节）
+            # [CRITICAL FIX] 修改切片索引：
+            # 天工机器人共9个关节(0-6为手臂, 7-8为手指)
+            # 我们只需要最后2个手指关节来计算卷曲正则化
+            self.robot_dof_pos[:, 7:],
             self.curled_q,
             self.cfg.hand_to_object_weight,
             self.cfg.hand_to_object_sharpness,
@@ -1152,15 +1155,15 @@ class TiangongEnv(DirectRLEnv):
         # 适配天工18个关节的观测维度
         obs = torch.cat(
             (
-                self.robot_dof_pos_noisy,  # 0:17（18个关节）
-                self.robot_dof_vel_noisy,  # 18:35
-                self.hand_pos_noisy,  # 36:51（2个手部链接×3维）
-                self.hand_vel_noisy,  # 52:67
-                self.object_goal,  # 68:70
-                self.actions,  # 71:81（11个动作）
-                self.fabric_q_for_obs,  # 82:99
-                self.fabric_qd_for_obs,  # 100:117
-                self.fabric_qdd_for_obs,  # 118:135
+                self.robot_dof_pos_noisy,  # 0:9（9个关节）
+                self.robot_dof_vel_noisy,  # 9:18
+                self.hand_pos_noisy,  # 18:24（2个手部链接×3维）
+                self.hand_vel_noisy,  # 24:30
+                self.object_goal,  # 30:33
+                self.actions,  # 33:44（11个动作）
+                self.fabric_q_for_obs,  # 44:61
+                self.fabric_qd_for_obs,  # 61:78
+                self.fabric_qdd_for_obs,  # 78:95
             ),
             dim=-1,
         )
