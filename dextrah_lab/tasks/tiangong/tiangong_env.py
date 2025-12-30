@@ -108,14 +108,15 @@ class TiangongEnv(DirectRLEnv):
         self.robot_dof_upper_limits = joint_pos_limits[..., 1][:, self.actuated_dof_indices]
 
         # Setting the target position for the object (适配天工600mm臂展调整目标位置)
+        # 奖励点坐标
         self.object_goal = \
-            torch.tensor([-0.3, 0., 0.75], device=self.device).repeat((self.num_envs, 1))
+            torch.tensor([0.3, 0., 1.2], device=self.device).repeat((self.num_envs, 1))
 
         # Nominal reset states for the robot (天工初始关节位置：零点位置)
         self.robot_start_joint_pos = \
             torch.tensor([
                 # 右臂：肩俯仰/肩翻滚/肩偏航/肘俯仰/肘偏航/腕俯仰/腕翻滚
-                0., 0., 0., -np.pi / 2, -np.pi / 2., 0., 0.,
+                -np.pi / 6, 0., 0., -np.pi / 2, 2.9, 0., 0.,
                 # 手指：拇指/食指
                 0., 0.
             ], device=self.device)
@@ -475,7 +476,7 @@ class TiangongEnv(DirectRLEnv):
                     mass_props=sim_utils.MassPropertiesCfg(density=500.0),
                 ),
                 init_state=RigidObjectCfg.InitialStateCfg(
-                    pos=(-0.3, 0., 0.5),  # 适配天工工作空间
+                    pos=(0.3, 0., 1.0),  # 适配天工工作空间
                     rot=(1.0, 0.0, 0.0, 0.0)),
             )
             object_for_grasping = RigidObject(object_cfg)
@@ -792,7 +793,8 @@ class TiangongEnv(DirectRLEnv):
         object_xy[:, 1] *= y_width_spawn
         object_xy[:, 1] += self.cfg.y_center
         object_start_state[env_ids, :2] = object_xy
-        object_start_state[:, 2] = 0.5
+        # 物体初始高度
+        object_start_state[:, 2] = 1.0
         rotation = self.dextrah_adr.get_custom_param_value("object_spawn", "rotation")
         rot_noise = sample_uniform(-rotation, rotation, (num_ids, 2), device=self.device)
         object_start_state[env_ids, 3:7] = randomize_rotation(
@@ -1189,6 +1191,10 @@ class TiangongEnv(DirectRLEnv):
             ),
             dim=-1,
         )
+        #print("---------------------------------------------")
+        #print("robot_dof_pos:", self.robot_dof_pos)  
+        #print("-------%%%%%%%%%%%%%%%%%%%%%%%%---------------")
+        #print("self.actions:", self.actions)
         return obs
 
     def compute_critic_observations(self):

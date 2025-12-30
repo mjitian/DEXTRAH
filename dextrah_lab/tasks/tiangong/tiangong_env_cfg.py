@@ -149,12 +149,12 @@ class TiangongEnvCfg(DirectRLEnvCfg):
             rot=(1.0, 0.0, 0.0, 0.0),
             joint_pos={
                 # 右臂关节（7个DOF）
-                "shoulder_pitch_r_joint": 0.,  # 肩关节俯仰：±170°（±2.9671 rad）
+                "shoulder_pitch_r_joint": -np.pi / 6,  # 肩关节俯仰：±170°（±2.9671 rad）
                 "shoulder_roll_r_joint": 0.,  # 肩关节翻滚：-150°~+15°（-2.618~+0.2618 rad）
                 "shoulder_yaw_r_joint": 0.,  # 肩关节偏航：±170°（±2.9671 rad）
                 # 初始姿态设为手臂水平伸直向前，以防止与桌面碰撞
                 "elbow_pitch_r_joint": -np.pi / 2,  # 肘关节俯仰：-150°~+15°（-2.618~+0.2618 rad）
-                "elbow_yaw_r_joint": -np.pi / 2,  # 肘关节偏航：±170°（±2.9671 rad）
+                "elbow_yaw_r_joint": 2.9,  # 肘关节偏航：±170°（±2.9671 rad）
                 "wrist_pitch_r_joint": 0.,  # 腕关节俯仰：-45°~+60°（-0.7854~+1.0472 rad）
                 "wrist_roll_r_joint": 0.,  # 腕关节翻滚：-75°~+95°（-1.309~+1.6581 rad）
                 # 手指关节（2个DOF）
@@ -210,9 +210,9 @@ class TiangongEnvCfg(DirectRLEnvCfg):
             ),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(-0.21 - 0.725 / 2,
+            pos=(0.36 + 0.725 / 2,
                  0.668 - 1.16 / 2,
-                 0.25 - 0.03 / 2),
+                 0.93 - 0.03 / 2),
             rot=(1.0, 0.0, 0.0, 0.0)),
     )
 
@@ -230,7 +230,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     camera_rand_rot_range = 3
     camera_rand_pos_range = 0.03
 
-    # 或许需要根据奥比中光 Gemini 336 相机调整参数？？？
+    # TODO 或许需要根据奥比中光 Gemini 336 相机调整参数
     # 这段代码配置了仿真环境中的视觉传感器（相机），定义了其光学参数、图像分辨率以及在仿真引擎中的渲染方式。
 
     horizontal_aperture = 21.02
@@ -285,10 +285,10 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2., replicate_physics=False)
 
     # 奖励权重：保持原配置，可根据天工动作特性后续调整
-    hand_to_object_weight = 1.
+    hand_to_object_weight = 10.
     hand_to_object_sharpness = 10.
     object_to_goal_weight = 5.
-    in_success_region_at_rest_weight = 10.
+    in_success_region_at_rest_weight = 7.
     lift_sharpness = 8.5
 
     # 目标达成参数：保持原配置
@@ -301,7 +301,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     object_height_thresh = 0.15
 
     # 物体生成参数：保持原配置
-    x_center = -0.55
+    x_center = 0.55
     x_width = 0.5
     y_center = 0.1
     y_width = 0.8

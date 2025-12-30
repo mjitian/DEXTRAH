@@ -2,13 +2,13 @@ cd ~/DEXTRAH/dextrah_lab/rl_games
 # 将num_envs, minibatch_size, central_value_config.minibatch_size改小，防止显存溢出
 python -m torch.distributed.run --nnodes=1 --nproc_per_node=1 \
   train.py \
-    --headless \
     --task=tiangong \
+    --headless \
     --seed -1 \
     --distributed \
-    --num_envs 256 \
-    agent.params.config.minibatch_size=4096 \
-    agent.params.config.central_value_config.minibatch_size=4096 \
+    --num_envs 4096  \
+    agent.params.config.minibatch_size=16384 \
+    agent.params.config.central_value_config.minibatch_size=16384 \
     agent.params.config.learning_rate=0.0001 \
     agent.params.config.horizon_length=16 \
     agent.params.config.mini_epochs=4 \

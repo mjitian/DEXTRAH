@@ -26,7 +26,7 @@ HAND_PCA_MAXS = [np.pi / 2, np.pi / 2]
 deg2rad = np.pi / 180.
 def PALM_POSE_MINS_FUNC(max_pose_angle):
     return [
-        -1.2, -0.7, 0.,
+        1.2, -0.7, 0.,
         (-135. - max_pose_angle) * deg2rad,
         -max_pose_angle * deg2rad,
         (180. - max_pose_angle) * deg2rad
@@ -35,7 +35,7 @@ def PALM_POSE_MINS_FUNC(max_pose_angle):
 
 def PALM_POSE_MAXS_FUNC(max_pose_angle):
     return [
-        0., 0.7, 1.,
+        0., 0.7, 1.3,
         (-135. + max_pose_angle) * deg2rad,
         max_pose_angle * deg2rad,
         (180. + max_pose_angle) * deg2rad
