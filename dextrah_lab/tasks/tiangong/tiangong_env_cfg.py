@@ -142,7 +142,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     )
 
     # robot: 9自由度（手臂7+手指2）
-    # TODO：或许需要修改prim_path以适配天工机器人？？？？
+    # 机器人初始位置和姿态配置
     robot_cfg: ArticulationCfg = TIANGONG_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
         init_state=ArticulationCfg.InitialStateCfg(
             pos=(0.0, 0.0, 0.0),  # 基于天工机身基准位置设置
@@ -154,7 +154,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
                 "shoulder_yaw_r_joint": 0.,  # 肩关节偏航：±170°（±2.9671 rad）
                 # 初始姿态设为手臂水平伸直向前，以防止与桌面碰撞
                 "elbow_pitch_r_joint": -np.pi / 2,  # 肘关节俯仰：-150°~+15°（-2.618~+0.2618 rad）
-                "elbow_yaw_r_joint": 0.,  # 肘关节偏航：±170°（±2.9671 rad）
+                "elbow_yaw_r_joint": -np.pi / 2,  # 肘关节偏航：±170°（±2.9671 rad）
                 "wrist_pitch_r_joint": 0.,  # 腕关节俯仰：-45°~+60°（-0.7854~+1.0472 rad）
                 "wrist_roll_r_joint": 0.,  # 腕关节翻滚：-75°~+95°（-1.309~+1.6581 rad）
                 # 手指关节（2个DOF）

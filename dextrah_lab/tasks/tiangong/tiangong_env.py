@@ -115,7 +115,7 @@ class TiangongEnv(DirectRLEnv):
         self.robot_start_joint_pos = \
             torch.tensor([
                 # 右臂：肩俯仰/肩翻滚/肩偏航/肘俯仰/肘偏航/腕俯仰/腕翻滚
-                0., 0., 0., -np.pi / 2, 0., 0., 0.,
+                0., 0., 0., -np.pi / 2, -np.pi / 2., 0., 0.,
                 # 手指：拇指/食指
                 0., 0.
             ], device=self.device)
