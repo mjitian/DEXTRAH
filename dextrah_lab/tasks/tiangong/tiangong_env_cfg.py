@@ -97,7 +97,7 @@ class EventCfg:
 @configclass
 class TiangongEnvCfg(DirectRLEnvCfg):
     # Placeholder for objects_dir which targets the directory of objects for training
-    objects_dir = "replace_me"
+    objects_dir = "visdex_objects"
     valid_objects_dir = ["visdex_objects"]
 
     # Toggle for using cuda graph
@@ -401,7 +401,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     }
 
     # 动作空间参数：保持原配置
-    max_pose_angle = -1.
+    max_pose_angle = 45.
 
     # 深度图随机化：保持原配置
     img_aug_type = "rgb"
