@@ -63,6 +63,8 @@ TIANGONG_CFG = ArticulationCfg(
             # right hand (A/B/C/D chains)
             "Joint_A01_R": 0.0,
             "Joint_B01_R": 0.0,
+            "Joint_C01_R": 0.0,
+            "Joint_D01_R": 0.0,
         },
     ),
     actuators={
@@ -82,6 +84,8 @@ TIANGONG_CFG = ArticulationCfg(
                 # right hand
                 "Joint_A01_R",
                 "Joint_B01_R",
+                "Joint_C01_R",
+                "Joint_D01_R",
             ],
             # 力矩上限
             effort_limit_sim={
@@ -97,6 +101,8 @@ TIANGONG_CFG = ArticulationCfg(
                 # right hand
                 "Joint_A01_R": 0.05,
                 "Joint_B01_R": 0.05,
+                "Joint_C01_R": 0.05,
+                "Joint_D01_R": 0.05,
             },
             # 刚度/阻尼配置
             stiffness={
@@ -108,6 +114,8 @@ TIANGONG_CFG = ArticulationCfg(
                 # hands
                 "Joint_A01_R": 5.0,
                 "Joint_B01_R": 5.0,
+                "Joint_C01_R": 5.0,
+                "Joint_D01_R": 5.0,
             },
             damping={
                 # right arm
@@ -118,6 +126,8 @@ TIANGONG_CFG = ArticulationCfg(
                 # hands
                 "Joint_A01_R": 0.5,
                 "Joint_B01_R": 0.5,
+                "Joint_C01_R": 0.5,
+                "Joint_D01_R": 0.5,
             },
         ),
     },

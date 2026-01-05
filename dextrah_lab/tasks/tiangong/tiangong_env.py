@@ -63,8 +63,8 @@ class TiangongEnv(DirectRLEnv):
     def __init__(self, cfg: TiangongEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
         self.num_robot_dofs = self.robot.num_joints
-        # 6维位姿(XYZ+RPY) + 2维手指 = 8维动作空间
-        self.cfg.num_actions = 8
+        # 6维位姿(XYZ+RPY) + 4维手指 = 10维动作空间
+        self.cfg.num_actions = 10
         self.num_actions = self.cfg.num_actions
         self.num_observations = (
             self.cfg.num_student_observations if self.cfg.distillation
@@ -118,7 +118,7 @@ class TiangongEnv(DirectRLEnv):
                 # 右臂：肩俯仰/肩翻滚/肩偏航/肘俯仰/肘偏航/腕俯仰/腕翻滚
                 -np.pi / 6, 0., 0., -np.pi / 2, 2.9, 0., 0.,
                 # 手指：拇指/食指
-                0., 0.
+                0., 0., 0., 0.
             ], device=self.device)
         self.robot_start_joint_pos = \
             self.robot_start_joint_pos.repeat(self.num_envs, 1).contiguous()
@@ -133,7 +133,7 @@ class TiangongEnv(DirectRLEnv):
                 # 右臂（手部卷曲）
                 # 0., 0., 0., np.pi / 2, 0., 0.0, 0.0,
                 # 手指（手部卷曲）
-                0.3, 0.3
+                0.3, 0.3, 0.3, 0.3
             ], device=self.device)
         self.curled_q = self.curled_q.repeat(self.num_envs, 1).contiguous()
 
@@ -312,7 +312,7 @@ class TiangongEnv(DirectRLEnv):
 
         # Pre-allocate target tensors
         # pca 改为两个手指指根的旋转角度
-        pca_dim = 2
+        pca_dim = 4
         self.hand_pca_targets = torch.zeros(self.num_envs, pca_dim, device=self.device)
         pose_dim = 6
         self.palm_pose_targets = torch.zeros(self.num_envs, pose_dim, device=self.device)

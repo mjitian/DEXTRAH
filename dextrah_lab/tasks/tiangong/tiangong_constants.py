@@ -18,8 +18,8 @@ NUM_QUAT = 4
 
 
 
-HAND_PCA_MINS = [0.0, 0.0]
-HAND_PCA_MAXS = [np.pi / 2, np.pi / 2]
+HAND_PCA_MINS = [0.0, 0.0, 0.0, 0.0]
+HAND_PCA_MAXS = [1.2217, 1.2217, 1.2217, 1.2217]
 #PALM_POSE_MINS = [-1, -0.75, 0, -np.pi, -np.pi / 2, -np.pi]
 #PALM_POSE_MAXS = [0.25, 0.75, 1, np.pi, np.pi / 2, np.pi]
 
@@ -41,6 +41,6 @@ def PALM_POSE_MAXS_FUNC(max_pose_angle):
         (180. + max_pose_angle) * deg2rad
     ]
 
-NUM_HAND_PCA = 2
+NUM_HAND_PCA = 4
 
 #TABLE_LENGTH_X, TABLE_LENGTH_Y, TABLE_LENGTH_Z = 0.725, 1.16, 0.03

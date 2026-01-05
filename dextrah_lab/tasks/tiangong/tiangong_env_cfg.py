@@ -110,7 +110,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     episode_length_s = 10.
     fabric_decimation = 2  # number of fabric steps per physics step
     num_sim_steps_to_render = 2  # renders every 4 sim steps, so 60 Hz
-    num_actions = 8 # 6维位姿(XYZ+RPY) + 2维手指 = 8维动作空间
+    num_actions = 10 # 6维位姿(XYZ+RPY) + 4维手指 = 10维动作空间
     success_timeout = 2.
     distillation = False
     num_student_observations = 0
@@ -157,15 +157,17 @@ class TiangongEnvCfg(DirectRLEnvCfg):
                 "elbow_yaw_r_joint": 2.9,  # 肘关节偏航：±170°（±2.9671 rad）
                 "wrist_pitch_r_joint": 0.,  # 腕关节俯仰：-45°~+60°（-0.7854~+1.0472 rad）
                 "wrist_roll_r_joint": 0.,  # 腕关节翻滚：-75°~+95°（-1.309~+1.6581 rad）
-                # 手指关节（2个DOF）
+                # 手指关节（4个DOF）
                 "Joint_A01_R": 0.0,
                 "Joint_B01_R": 0.0,
+                "Joint_C01_R": 0.0,
+                "Joint_D01_R": 0.0,
 
             },
         )
     )
 
-    # 驱动关节列表：严格对应9个自由度（手臂7+手指2）
+    # 驱动关节列表：严格对应11个自由度（手臂7+手指4）
     actuated_joint_names = [
         # 右臂关节
         "shoulder_pitch_r_joint",
@@ -175,9 +177,11 @@ class TiangongEnvCfg(DirectRLEnvCfg):
         "elbow_yaw_r_joint",
         "wrist_pitch_r_joint",
         "wrist_roll_r_joint",
-        # 手指关节（2个DOF）
+        # 手指关节（4个DOF）
         "Joint_A01_R",
         "Joint_B01_R",
+        "Joint_C01_R",
+        "Joint_D01_R",
     ]
 
     # 手部关键链接：基于URDF手部基座定义
@@ -235,8 +239,8 @@ class TiangongEnvCfg(DirectRLEnvCfg):
 
     horizontal_aperture = 21.02
     focal_length = 23.59
-    img_width = int(160 * 2)
-    img_height = int(120 * 2)
+    img_width = int(160 * 2) #320
+    img_height = int(120 * 2) #240
     tiled_camera: TiledCameraCfg = TiledCameraCfg(
         prim_path="/World/envs/env_.*/Camera",
         offset=TiledCameraCfg.OffsetCfg(pos=camera_pos, rot=camera_rot, convention="ros"),
@@ -315,8 +319,8 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     starting_robot_dof_friction_coefficients = [
         # 右臂关节
         1.0, 1.0, 1.0, 1.0, 1.0, 0.8, 0.8,
-        # 手指关节（2个DOF）
-        0.1, 0.1,
+        # 手指关节（4个DOF）
+        0.1, 0.1, 0.1, 0.1,
     ]
 
     # 领域随机化配置：保持原配置
