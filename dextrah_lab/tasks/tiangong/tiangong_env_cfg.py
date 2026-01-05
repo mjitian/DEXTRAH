@@ -97,7 +97,7 @@ class EventCfg:
 @configclass
 class TiangongEnvCfg(DirectRLEnvCfg):
     # Placeholder for objects_dir which targets the directory of objects for training
-    objects_dir = "replace_me"
+    objects_dir = "visdex_objects"
     valid_objects_dir = ["visdex_objects"]
 
     # Toggle for using cuda graph
@@ -214,7 +214,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
             ),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(0.36 + 0.725 / 2,
+            pos=(0.3 + 0.725 / 2,
                  0.668 - 1.16 / 2,
                  0.93 - 0.03 / 2),
             rot=(1.0, 0.0, 0.0, 0.0)),
@@ -289,10 +289,10 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2., replicate_physics=False)
 
     # 奖励权重：保持原配置，可根据天工动作特性后续调整
-    hand_to_object_weight = 10.
+    hand_to_object_weight = 1.
     hand_to_object_sharpness = 10.
     object_to_goal_weight = 5.
-    in_success_region_at_rest_weight = 7.
+    in_success_region_at_rest_weight = 10.
     lift_sharpness = 8.5
 
     # 目标达成参数：保持原配置
@@ -307,7 +307,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     # 物体生成参数：保持原配置
     x_center = 0.55
     x_width = 0.5
-    y_center = 0.1
+    y_center = -0.1
     y_width = 0.8
 
     # DR控制：保持原配置
@@ -404,8 +404,10 @@ class TiangongEnvCfg(DirectRLEnvCfg):
         },
     }
 
-    # 动作空间参数：保持原配置
-    max_pose_angle = -1.
+    # File "/home/dodo/DEXTRAH/dextrah_lab/tasks/tiangong/tiangong_env.py", line 88, in __init__
+    # raise ValueError('Max pose angle must be positive')
+    # 动作空间参数：要求大于零
+    max_pose_angle = 30.#?
 
     # 深度图随机化：保持原配置
     img_aug_type = "rgb"

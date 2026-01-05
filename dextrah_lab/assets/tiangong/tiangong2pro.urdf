@@ -572,7 +572,7 @@
     </collision>
   </link>
 
-  <joint name="Joint_A02_R" type="revolute">
+  <joint name="Joint_A02_R" type="fixed">
     <mimic joint="Joint_A01_R" multiplier="1.0" offset="0.0" />
     <origin xyz="0.048864 -0.017785 0" rpy="0 0 0" />
     <parent link="A01_R" />
@@ -663,7 +663,7 @@
     </collision>
   </link>
   
-  <joint name="Joint_B02_R" type="revolute">
+  <joint name="Joint_B02_R" type="fixed">
     <mimic joint="Joint_B01_R" multiplier="1.0" offset="0.0" />
     <origin xyz="0 0 -0.052" rpy="0 0 0" />
     <parent link="B01_R" />
@@ -754,7 +754,7 @@
     </collision>
   </link>
   
-  <joint name="Joint_C02_R" type="revolute">
+  <joint name="Joint_C02_R" type="fixed">
     <mimic joint="Joint_C01_R" multiplier="1.0" offset="0.0" />
     <origin xyz="0 0.0054355 -0.051715" rpy="0 0 0" />
     <parent link="C01_R" />
@@ -846,7 +846,7 @@
     </collision>
   </link>
   
-  <joint name="Joint_D02_R" type="revolute">
+  <joint name="Joint_D02_R" type="fixed">
     <mimic joint="Joint_D01_R" multiplier="1.0" offset="0.0" />
     <origin xyz="0 0.012139 -0.050563" rpy="0 0 0" />
     <parent link="D01_R" />

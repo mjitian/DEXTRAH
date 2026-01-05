@@ -114,7 +114,7 @@ class EventCfg:
 @configclass
 class DextrahKukaAllegroEnvCfg(DirectRLEnvCfg):
     # Placeholder for objects_dir which targets the directory of objects for training
-    objects_dir = "replace_me"
+    objects_dir = "visdex_objects"
     valid_objects_dir = ["visdex_objects"]
 
     # Toggle for using cuda graph
@@ -435,7 +435,7 @@ class DextrahKukaAllegroEnvCfg(DirectRLEnvCfg):
     }
 
     # Action space related parameters
-    max_pose_angle = -1.
+    max_pose_angle = 30.
 
     # depth randomization parameters
     img_aug_type = "rgb"

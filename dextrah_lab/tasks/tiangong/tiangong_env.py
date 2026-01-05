@@ -110,7 +110,7 @@ class TiangongEnv(DirectRLEnv):
         # Setting the target position for the object (适配天工600mm臂展调整目标位置)
         # 奖励点坐标
         self.object_goal = \
-            torch.tensor([0.3, 0., 1.2], device=self.device).repeat((self.num_envs, 1))
+            torch.tensor([0.5, 0, 1.2], device=self.device).repeat((self.num_envs, 1))
 
         # Nominal reset states for the robot (天工初始关节位置：零点位置)
         self.robot_start_joint_pos = \
@@ -133,7 +133,7 @@ class TiangongEnv(DirectRLEnv):
                 # 右臂（手部卷曲）
                 # 0., 0., 0., np.pi / 2, 0., 0.0, 0.0,
                 # 手指（手部卷曲）
-                0.3, 0.3, 0.3, 0.3
+                0.77, 1.21, 1.21, 1.21
             ], device=self.device)
         self.curled_q = self.curled_q.repeat(self.num_envs, 1).contiguous()
 
@@ -270,14 +270,16 @@ class TiangongEnv(DirectRLEnv):
             raise ValueError(f"Need to specify valid directory of objects for training: {self.cfg.valid_objects_dir}")
         num_unique_objects = self.find_num_unique_objects(self.cfg.objects_dir)
 
-        # TODO 根据天工任务调整obs和state维度
-        self.cfg.num_student_observations = 62
-        self.cfg.num_teacher_observations = 70 + num_unique_objects
+        # 根据天工11个关节调整obs和state维度
+        # observation增加12维(2个额外手指 × 6维/关节)
+        # state只增加2维(额外的手指关节目标位置)
+        self.cfg.num_student_observations = 74
+        self.cfg.num_teacher_observations = 82 + num_unique_objects
         if self.cfg.distillation:
             self.cfg.num_observations = self.cfg.num_student_observations
         else:
             self.cfg.num_observations = self.cfg.num_teacher_observations
-        self.cfg.num_states = 91 + num_unique_objects
+        self.cfg.num_states = 102 + num_unique_objects
         self.cfg.state_space = self.cfg.num_states
         self.cfg.observation_space = self.cfg.num_observations
         self.cfg.action_space = self.cfg.num_actions
@@ -453,7 +455,7 @@ class TiangongEnv(DirectRLEnv):
             print('Object prim path', prim_path)
             print('Object Scale', self.object_scale[i])
 
-            # 物体配置（适配天工负载）
+            # 物体配置
             object_cfg = RigidObjectCfg(
                 prim_path=prim_path,
                 spawn=sim_utils.UsdFileCfg(
@@ -476,7 +478,7 @@ class TiangongEnv(DirectRLEnv):
                     mass_props=sim_utils.MassPropertiesCfg(density=500.0),
                 ),
                 init_state=RigidObjectCfg.InitialStateCfg(
-                    pos=(0.3, 0., 1.0),  # 适配天工工作空间
+                    pos=(0.3, 0, 1.0),  # 适配天工工作空间
                     rot=(1.0, 0.0, 0.0, 0.0)),
             )
             object_for_grasping = RigidObject(object_cfg)
@@ -1154,73 +1156,67 @@ class TiangongEnv(DirectRLEnv):
         )
 
     def compute_student_policy_observations(self):
-        # 适配天工18个关节的观测维度
         obs = torch.cat(
             (
-                self.robot_dof_pos_noisy,  # 0:9（9个关节）
-                self.robot_dof_vel_noisy,  # 9:18
-                self.hand_pos_noisy,  # 18:24（2个手部链接×3维）
-                self.hand_vel_noisy,  # 24:30
-                self.object_goal,  # 30:33
-                self.actions,  # 33:44（11个动作）
-                self.fabric_q_for_obs,  # 44:61
-                self.fabric_qd_for_obs,  # 61:78
-                self.fabric_qdd_for_obs,  # 78:95
+                self.robot_dof_pos_noisy,    # 0:11   - 11维：关节位置（7个手臂+4个手指）
+                self.robot_dof_vel_noisy,    # 11:22  - 11维：关节速度
+                self.hand_pos_noisy,         # 22:25  - 3维：手部笛卡尔位置（1个手部链接×3维XYZ）
+                self.hand_vel_noisy,         # 25:28  - 3维：手部笛卡尔速度
+                self.object_goal,            # 28:31  - 3维：目标位置（XYZ）
+                self.actions,                # 31:41  - 10维：上一步动作（6维位姿+4维手指）
+                self.fabric_q_for_obs,       # 41:52  - 11维：Fabric控制器建议的关节位置
+                self.fabric_qd_for_obs,      # 52:63  - 11维：Fabric控制器建议的关节速度
+                self.fabric_qdd_for_obs,     # 63:74  - 11维：Fabric控制器建议的关节加速度
             ),
             dim=-1,
         )
-        return obs
+        return obs  # 总维度：11+11+3+3+3+10+11+11+11 = 74 维
 
     def compute_policy_observations(self):
-        # 适配天工观测维度
         obs = torch.cat(
             (
-                self.robot_dof_pos_noisy,
-                self.robot_dof_vel_noisy,
-                self.hand_pos_noisy,
-                self.hand_vel_noisy,
-                self.object_pos_noisy,
-                self.object_rot_noisy,
-                self.object_goal,
-                self.multi_object_idx_onehot,
-                self.object_scale,
-                self.actions,
-                self.fabric_q_for_obs,
-                self.fabric_qd_for_obs,
-                self.fabric_qdd_for_obs,
+                self.robot_dof_pos_noisy,       # 0:11    - 11维：关节位置（7个手臂+4个手指），带噪声
+                self.robot_dof_vel_noisy,       # 11:22   - 11维：关节速度，带噪声
+                self.hand_pos_noisy,            # 22:25   - 3维：手腕笛卡尔位置（1个手部链接×3维XYZ）
+                self.hand_vel_noisy,            # 25:28   - 3维：手腕笛卡尔速度
+                self.object_pos_noisy,          # 28:31   - 3维：物体位置（XYZ），带噪声
+                self.object_rot_noisy,          # 31:35   - 4维：物体旋转（四元数XYZW），带噪声
+                self.object_goal,               # 35:38   - 3维：目标位置（XYZ）
+                self.multi_object_idx_onehot,   # 38:38+N - N维：物体类别独热编码（N=num_unique_objects）
+                self.object_scale,              # 38+N:39+N - 1维：物体缩放因子
+                self.actions,                   # 39+N:49+N - 10维：上一步动作（6维位姿+4维手指）
+                self.fabric_q_for_obs,          # 49+N:60+N - 11维：Fabric控制器建议的关节位置
+                self.fabric_qd_for_obs,         # 60+N:71+N - 11维：Fabric控制器建议的关节速度
+                self.fabric_qdd_for_obs,        # 71+N:82+N - 11维：Fabric控制器建议的关节加速度
             ),
             dim=-1,
         )
-        #print("---------------------------------------------")
-        #print("robot_dof_pos:", self.robot_dof_pos)  
-        #print("-------%%%%%%%%%%%%%%%%%%%%%%%%---------------")
-        #print("self.actions:", self.actions)
-        return obs
-
+        return obs  # 总维度：11+11+3+3+3+4+3+N+1+10+11+11+11 = 82+N 维
+    
     def compute_critic_observations(self):
-        # 适配天工观测维度
+        # 适配天工观测维度 - 无噪声真实状态 + 物理传感器信息 = 102+N 维
         obs = torch.cat(
             (
-                self.robot_dof_pos,
-                self.robot_dof_vel,
-                self.hand_pos.view(self.num_envs, self.num_hand_bodies * 3),
-                self.hand_vel.view(self.num_envs, self.num_hand_bodies * 6),
-                self.hand_forces[:, :3],
-                self.measured_joint_torque,
-                self.object_pos,
-                self.object_rot,
-                self.object_vel,
-                self.object_goal,
-                self.multi_object_idx_onehot,
-                self.object_scale,
-                self.actions,
-                self.fabric_q.clone(),
-                self.fabric_qd.clone(),
-                self.fabric_qdd.clone(),
+                self.robot_dof_pos,                                    # 0:11   - 11维：关节位置（7个手臂+4个手指），无噪声真实值
+                self.robot_dof_vel,                                    # 11:22  - 11维：关节速度（7个手臂+4个手指），无噪声真实值
+                self.hand_pos.view(self.num_envs, self.num_hand_bodies * 3),  # 22:25 - 3维：手部链接位置（1个×3维XYZ）
+                self.hand_vel.view(self.num_envs, self.num_hand_bodies * 6),  # 25:31 - 6维：手部链接速度（线速度3+角速度3）
+                self.hand_forces[:, :3],                               # 31:34  - 3维：手部受力（xyz分量），力觉传感器信息
+                self.measured_joint_torque,                            # 34:45  - 11维：关节扭矩（7个手臂+4个手指），力觉信息
+                self.object_pos,                                       # 45:48  - 3维：物体位置（XYZ），无噪声真实值
+                self.object_rot,                                       # 48:52  - 4维：物体旋转（四元数XYZW），无噪声真实值
+                self.object_vel[:, :3],                                # 52:55  - 3维：物体速度（XYZ）
+                self.object_goal,                                      # 55:58  - 3维：目标位置（XYZ）
+                self.multi_object_idx_onehot,                          # 58:58+N - N维：物体类别独热编码（N=num_unique_objects）
+                self.object_scale,                                     # 58+N:59+N - 1维：物体缩放因子
+                self.actions,                                          # 59+N:69+N - 10维：上一步动作（6维位姿+4维手指）
+                self.fabric_q.clone(),                                 # 69+N:80+N - 11维：Fabric控制器建议关节位置
+                self.fabric_qd.clone(),                                # 80+N:91+N - 11维：Fabric控制器建议关节速度
+                self.fabric_qdd.clone(),                               # 91+N:102+N - 11维：Fabric控制器建议关节加速度
             ),
             dim=-1,
         )
-        return obs
+        return obs  # 总维度：11+11+3+6+3+11+3+4+3+3+N+1+10+11+11+11 = 102+N 维
 
     def apply_object_wrench(self):
         # Update whether to apply wrench based on whether object is at goal（与原文件注释一致）
