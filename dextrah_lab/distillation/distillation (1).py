@@ -351,6 +351,13 @@ class Dagger:
         self.student_model.train()
         self.teacher_model.eval()
         # torch.set_float32_matmul_precision('high')
+        
+        # Check for NaN in model parameters at initialization
+        for name, param in self.student_model.named_parameters():
+            if torch.isnan(param).any() or torch.isinf(param).any():
+                print(f"[ERROR] NaN/Inf detected in student model parameter: {name}")
+                print(f"Initializing {name} to zeros")
+                param.data = torch.zeros_like(param.data)
 
         obs = self.env.reset()[0]
 
@@ -402,7 +409,8 @@ class Dagger:
                     aug_output = self.rgb_aug.apply(imgs, masks)
                     obs["img_left"] = aug_output["left_img"]
                     obs["img_right"] = aug_output["right_img"]
-                    obs['img_right'] = torch.flip(obs['img_right'], dims=(2,3))
+                    if self.stereo:
+                        obs['img_right'] = torch.flip(obs['img_right'], dims=(2,3))
                 else:
                     if self.img_aug_type == "rgb":
                         obs["rgb"] = self.rgb_aug.apply(obs["rgb"], obs["mask"])
@@ -442,6 +450,13 @@ class Dagger:
             # Image.fromarray(left_img).save("left_img.png")
             # Image.fromarray(right_img).save("right_img.png")
             # breakpoint()
+            
+            # Check observations for NaN/Inf values
+            for key, value in obs.items():
+                if isinstance(value, torch.Tensor):
+                    if torch.isnan(value).any() or torch.isinf(value).any():
+                        print(f"[WARNING] NaN/Inf detected in observation '{key}' at iteration {log_counter}")
+                        obs[key] = torch.nan_to_num(value, nan=0.0, posinf=1.0, neginf=-1.0)
             
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 with torch.no_grad():
@@ -529,12 +544,24 @@ class Dagger:
             if self.is_rnn:
                 if log_counter % self.seq_length == 0:
                     total_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(
-                        self.student_model.parameters(), 1.0
-                    )
-                    self.optimizer.step()
-                    # self.scheduler.step()
-                    self.optimizer.zero_grad()
+                    
+                    # Check for NaN gradients
+                    has_nan_grad = False
+                    for name, param in self.student_model.named_parameters():
+                        if param.grad is not None and (torch.isnan(param.grad).any() or torch.isinf(param.grad).any()):
+                            print(f"[WARNING] NaN/Inf gradient detected in {name} at iteration {log_counter}")
+                            has_nan_grad = True
+                    
+                    if has_nan_grad:
+                        print("[WARNING] Skipping optimizer step due to NaN gradients")
+                        self.optimizer.zero_grad()
+                    else:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.student_model.parameters(), 1.0
+                        )
+                        self.optimizer.step()
+                        # self.scheduler.step()
+                        self.optimizer.zero_grad()
                     for i, s in enumerate(self.student_hidden_states):
                         self.student_hidden_states[i] = s.detach()
                     total_loss = 0.
@@ -542,8 +569,23 @@ class Dagger:
             else:
                 self.optimizer.zero_grad()
                 total_loss.backward()
-                self.optimizer.step()
-                # self.scheduler.step()
+                
+                # Check for NaN gradients
+                has_nan_grad = False
+                for name, param in self.student_model.named_parameters():
+                    if param.grad is not None and (torch.isnan(param.grad).any() or torch.isinf(param.grad).any()):
+                        print(f"[WARNING] NaN/Inf gradient detected in {name} at iteration {log_counter}")
+                        has_nan_grad = True
+                
+                if has_nan_grad:
+                    print("[WARNING] Skipping optimizer step due to NaN gradients")
+                    self.optimizer.zero_grad()
+                else:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.student_model.parameters(), 1.0
+                    )
+                    self.optimizer.step()
+                    # self.scheduler.step()
                 total_loss = 0.
             end_time = time.time()
             # print(f"Time taken for backward and step: {end_time - start_time} seconds")
@@ -792,7 +834,24 @@ class Dagger:
                 self.teacher_hidden_states = res_dict["rnn_states"]
             mus = res_dict["mus"]
             sigmas = res_dict["sigmas"]
-        distr = torch.distributions.Normal(mus, sigmas, validate_args=False)
+        
+        # Check for NaN/Inf values and handle them
+        if torch.isnan(mus).any() or torch.isinf(mus).any():
+            print(f"[WARNING] NaN/Inf detected in mus. Replacing with zeros.")
+            print(f"mus shape: {mus.shape}, dtype: {mus.dtype}")
+            print(f"mus values: {mus}")
+            mus = torch.nan_to_num(mus, nan=0.0, posinf=1.0, neginf=-1.0)
+        
+        if torch.isnan(sigmas).any() or torch.isinf(sigmas).any():
+            print(f"[WARNING] NaN/Inf detected in sigmas. Replacing with 1.0")
+            print(f"sigmas shape: {sigmas.shape}, dtype: {sigmas.dtype}")
+            print(f"sigmas values: {sigmas}")
+            sigmas = torch.nan_to_num(sigmas, nan=1.0, posinf=1.0, neginf=0.1)
+        
+        # Ensure sigmas are positive (add small epsilon for numerical stability)
+        sigmas = torch.clamp(sigmas, min=1e-6)
+        
+        distr = torch.distributions.Normal(mus, sigmas, validate_args=True)
         selected_action = distr.sample().squeeze()
         # clamp selected action between 1 and -1
         selected_action = torch.clamp(selected_action, -1., 1.)
@@ -852,4 +911,3 @@ class Dagger:
         with open(cfg_path, 'r') as f:
             config = yaml.safe_load(f)
         return config
-

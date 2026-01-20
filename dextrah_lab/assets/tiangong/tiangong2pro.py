@@ -28,20 +28,20 @@ tiangong2pro_usd_path = os.path.join(root_path, "tiangong/tiangong2pro.usd")
 TIANGONG_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=tiangong2pro_usd_path,
-        activate_contact_sensors=False,
+        activate_contact_sensors=False,    #之前false
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            disable_gravity=True,
+            disable_gravity=True,   #之前true
             retain_accelerations=True,
             linear_damping=0.0,
             angular_damping=0.0,
-            max_linear_velocity=1000.0,
-            max_angular_velocity=1000.0,
+            max_linear_velocity=1000.0,  # 降低最大速度（避免震荡）之前1000
+            max_angular_velocity=1000.0,   #之前1000
             max_depenetration_velocity=1000.0,
         ),
         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
             enabled_self_collisions=True,
-            solver_position_iteration_count=8,
-            solver_velocity_iteration_count=0,
+            solver_position_iteration_count=8,  # 天工高刚度关节需多迭代，之前8
+            solver_velocity_iteration_count=0,   #之前0
             sleep_threshold=0.005,
             stabilization_threshold=0.0005,
         ),

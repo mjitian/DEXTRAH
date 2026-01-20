@@ -64,7 +64,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 
 from distillation import Dagger
-import dextrah_lab.tasks.dextrah_kuka_allegro.gym_setup
+import dextrah_lab.tasks.tiangong.gym_setup
 
 from dextrah_lab.distillation.a2c_with_aux_depth import A2CBuilder as A2CWithAuxDepthBuilder
 from dextrah_lab.distillation.a2c_with_aux_cnn import A2CBuilder as A2CWithAuxCNNBuilder
@@ -107,7 +107,7 @@ def main(env_cfg, agent_cfg: dict):
     parent_path = str(pathlib.Path(__file__).parent.parent.parent.resolve())
 
     #agent
-    agent_cfg_folder = "dextrah_lab/tasks/dextrah_kuka_allegro/agents"
+    agent_cfg_folder = "dextrah_lab/tasks/tiangong/agents"
 
     if ov_env.simulate_stereo:
         student_cfg = os.path.join(
@@ -155,7 +155,7 @@ def main(env_cfg, agent_cfg: dict):
     if rank == 0:
         train_dir = "runs"
         experiment_name = (
-            "Dextrah-Kuka-Allegro"
+            "tiangong"
             + datetime.now().strftime("_%d-%H-%M-%S")
         )
         experiment_dir = os.path.join(train_dir, experiment_name)

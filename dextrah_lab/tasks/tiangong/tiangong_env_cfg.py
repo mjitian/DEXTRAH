@@ -216,15 +216,15 @@ class TiangongEnvCfg(DirectRLEnvCfg):
             rot=(1.0, 0.0, 0.0, 0.0)),
     )
 
-    # TODO：根据手眼标定结果调整相机初始位姿
+    # TODO：调整相机初始位姿
     tf = np.array([
-        7.416679444534866883e-02, -9.902696855667120213e-01, 1.177507386359286923e-01, -7.236400044878017468e-01,
-        -1.274026398887237732e-01, 1.076995435286611930e-01, 9.859864987275952508e-01, -6.886495877727516479e-01,
-        -9.890742408692511090e-01, -8.812921292808308105e-02, -1.181752422362273985e-01, 6.366771698474239516e-01,
-        0.000000000000000000e+00, 0.000000000000000000e+00, 0.000000000000000000e+00, 1.000000000000000000e+00
+        0.000,  -0.662,  0.749,  0.113,
+       -1.000,   0.000,  0.000,  0.011,
+        0.000,  -0.749, -0.662,  1.553,
+        0.000,   0.000,  0.000,  1.000
     ]).reshape(4, 4)
     camera_pos = tf[:3, 3].tolist()
-    camera_rot = [0.51567701, -0.52073085, 0.53658829, 0.41831759]
+    camera_rot = [-0.645, -0.645, -0.291, 0.291]
     del tf
     # 略微随机化相机的位置和朝向
     camera_rand_rot_range = 3
@@ -285,15 +285,15 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=2., replicate_physics=False)
 
     # 奖励权重：保持原配置，可根据天工动作特性后续调整
-    hand_to_object_weight = 10.
+    hand_to_object_weight = 1.
     hand_to_object_sharpness = 10.
     object_to_goal_weight = 5.
-    in_success_region_at_rest_weight = 7.
+    in_success_region_at_rest_weight = 10.
     lift_sharpness = 8.5
 
     # 目标达成参数：保持原配置
     object_goal_tol = 0.1  # m
-    success_for_adr = 0.4
+    success_for_adr = 0.2  # 降低成功阈值（原0.4，先易后难）w
     min_steps_for_dr_change = 5 * int(episode_length_s / (decimation * sim_dt))
 
     # 抓取标准：保持原配置
@@ -303,7 +303,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     # 物体生成参数：保持原配置
     x_center = 0.55
     x_width = 0.5
-    y_center = 0.1
+    y_center = -0.1
     y_width = 0.8
 
     # DR控制：保持原配置
@@ -385,9 +385,9 @@ class TiangongEnvCfg(DirectRLEnvCfg):
             "robot_joint_vel_bias": (0.0, 0.08),  # rad
         },
         "reward_weights": {
-            "finger_curl_reg": (-0.01, -0.005),
+            "finger_curl_reg": (-0.005, -0.005),  # 降低手指卷曲惩罚 w
             "object_to_goal_sharpness": (-15., -20.),
-            "lift_weight": (5., 0.)
+            "lift_weight": (10., 0.)  # 提高提升奖励（鼓励抓取成功） w
         },
         "pd_targets": {
             "velocity_target_factor": (1., 0.)

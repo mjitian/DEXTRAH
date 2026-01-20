@@ -110,7 +110,7 @@ class TiangongEnv(DirectRLEnv):
         # Setting the target position for the object (适配天工600mm臂展调整目标位置)
         # 奖励点坐标
         self.object_goal = \
-            torch.tensor([0.3, 0., 1.2], device=self.device).repeat((self.num_envs, 1))
+            torch.tensor([0.5, 0, 1.2], device=self.device).repeat((self.num_envs, 1))
 
         # Nominal reset states for the robot (天工初始关节位置：零点位置)
         self.robot_start_joint_pos = \
@@ -133,7 +133,7 @@ class TiangongEnv(DirectRLEnv):
                 # 右臂（手部卷曲）
                 # 0., 0., 0., np.pi / 2, 0., 0.0, 0.0,
                 # 手指（手部卷曲）
-                0.3, 0.3
+                0.77, 1.21
             ], device=self.device)
         self.curled_q = self.curled_q.repeat(self.num_envs, 1).contiguous()
 
@@ -211,10 +211,10 @@ class TiangongEnv(DirectRLEnv):
         ).as_euler('xyz', degrees=True)[None, :]
 
         tf = np.array([
-            7.416679444534866883e-02, -9.902696855667120213e-01, 1.177507386359286923e-01, -7.236400044878017468e-01,
-            -1.274026398887237732e-01, 1.076995435286611930e-01, 9.859864987275952508e-01, -6.886495877727516479e-01,
-            -9.890742408692511090e-01, -8.812921292808308105e-02, -1.181752422362273985e-01, 6.366771698474239516e-01,
-            0.000000000000000000e+00, 0.000000000000000000e+00, 0.000000000000000000e+00, 1.000000000000000000e+00
+            0.000,  -0.662,  0.749,  0.113,
+           -1.000,   0.000,  0.000,  0.011,
+            0.000,  -0.749, -0.662,  1.553,
+            0.000,   0.000,  0.000,  1.000
         ]).reshape(4, 4)
         self.camera_pose = np.tile(
             tf, (self.num_envs, 1, 1)
@@ -476,7 +476,7 @@ class TiangongEnv(DirectRLEnv):
                     mass_props=sim_utils.MassPropertiesCfg(density=500.0),
                 ),
                 init_state=RigidObjectCfg.InitialStateCfg(
-                    pos=(0.3, 0., 1.0),  # 适配天工工作空间
+                    pos=(0.5, -0.1, 1.0),  # 适配天工工作空间
                     rot=(1.0, 0.0, 0.0, 0.0)),
             )
             object_for_grasping = RigidObject(object_cfg)
@@ -486,21 +486,42 @@ class TiangongEnv(DirectRLEnv):
                 attribute_name="physxArticulation:articulationEnabled",
                 value=False
             )
-            # Get shaders (天工机器人材质路径)
+            
             prim = stage.GetPrimAtPath(prim_path)
             self.object_mat_prims.append(prim.GetChildren()[0].GetChildren()[0].GetChildren()[0])
             arm_shader_prims = list()
-            arm_shader_prims.append(
-                stage.GetPrimAtPath(
-                    "/World/envs/" + "env_" + str(i) + "/Robot/Looks/tiangong_grey/Shader"  # 天工材质
-                )
-            )
-            arm_shader_prims.append(
-                stage.GetPrimAtPath(
-                    "/World/envs/" + "env_" + str(i) + "/Robot/Looks/tiangong_black/Shader"
-                )
-            )
+            # ========== 适配天工tiangong2pro的材质路径 - 开始 ==========
+            # 天工机器人核心手臂连杆的材质Shader路径（覆盖所有可见连杆）
+            arm_shader_paths = [
+            f"/World/envs/env_{i}/Robot/shoulder_link/Looks/OmniPBR/Shader",
+            f"/World/envs/env_{i}/Robot/upper_arm_link/Looks/OmniPBR/Shader",
+            f"/World/envs/env_{i}/Robot/forearm_link/Looks/OmniPBR/Shader",
+            f"/World/envs/env_{i}/Robot/wrist_link/Looks/OmniPBR/Shader",
+            f"/World/envs/env_{i}/Robot/hand_link/Looks/OmniPBR/Shader",
+            f"/World/envs/env_{i}/Robot/thumb_link/Looks/OmniPBR/Shader",
+            f"/World/envs/env_{i}/Robot/index_link/Looks/OmniPBR/Shader"
+            ]
+            # 遍历所有天工手臂材质路径，获取有效Prim
+            for shader_path in arm_shader_paths:
+                shader_prim = stage.GetPrimAtPath(shader_path)
+            if shader_prim and not shader_prim.IsInvalid():  # 关键：过滤无效Prim，防报错
+                arm_shader_prims.append(shader_prim)
             self.arm_mat_prims.append(arm_shader_prims)
+            # ========== 适配天工tiangong2pro的材质路径 - 结束 ==========
+            '''
+            arm_shader_prims.append(
+                stage.GetPrimAtPath(
+                    "/World/envs/" + "env_" + str(i) + "/Robot/Looks/arm_grey/Shader" 
+                )
+            )
+            arm_shader_prims.append(
+                stage.GetPrimAtPath(
+                    "/World/envs/" + "env_" + str(i) + "/Robot/Looks/arm_black/Shader"
+                )
+            )
+            
+            self.arm_mat_prims.append(arm_shader_prims)
+            '''
 
         # Add multi-object config
         regex = "/World/envs/env_.*/object/.*"
