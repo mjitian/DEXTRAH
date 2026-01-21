@@ -73,8 +73,8 @@ class TiangongFabricNode(Node):
         # arm-right 20 + id
         self.arm_controlled_joints = [21, 22, 23, 24, 25, 26, 27]
         self.hand_controlled_joints = [
-            "thumb_joint_1_right",
-            "index_joint_1_right",
+            "Joint_A01_R",
+            "Joint_B01_R",
         ]
 
 
@@ -157,8 +157,8 @@ class TiangongFabricNode(Node):
             "elbow_yaw_r_joint",
             "wrist_pitch_r_joint",
             "wrist_roll_r_joint",
-            "thumb_joint_1_right",
-            "index_joint_1_right",
+            "Joint_A01_R",
+            "Joint_B01_R",
         ]
 
         self._tiangong_fabric_pub = \
@@ -195,14 +195,14 @@ class TiangongFabricNode(Node):
         """
         with self._tiangong_joint_position_lock:
             self.tiangong_feedback_time = time.time()
-            for motor_status in msg.status:
-                joint_index = motor_status.name - 21
-                self._tiangong_joint_position[joint_index] = motor_status.pos
-
+            for motor_statu in msg.status:
+                if motor_statu.name in self.arm_controlled_joints:
+                    index = self.arm_controlled_joints.index(motor_statu.name)
+                    self._tiangong_joint_position[index] = motor_statu.pos
         with self._tiangong_joint_position_command_lock:
             if self._tiangong_joint_position_command is None or self._tiangong_joint_velocity_command is None:
                 self._tiangong_joint_position_command = list(self._tiangong_joint_position)
-                self._tiangong_joint_velocity_command = len(msg.velocity) * [0.]
+                self._tiangong_joint_velocity_command = len(msg.status) * [0.]
 
     def _hand_pub_callback(self):
         """
@@ -311,13 +311,15 @@ class TiangongFabricNode(Node):
         # Initialize fabric-----------------------
         # Declare batch size and number of joints
         batch_size = 1
-        num_dof = 9
+        num_dof = 9  # 7 for tiangong arm + 2 for hand PCA
 
         # Provide initial commands for the fabric
-        # TODO 根据实际情况修改初始值
+        
+        # 根据天工机器人实际情况修改后的初始值
         # Palm pose target
+        # 旋转顺序为 euler_zyx
         self.palm_target = \
-            torch.tensor([[-0.6868, 0.0320, 0.685, -2.3873, -0.0824, 3.1301]], device=self.device)
+            torch.tensor([[0.449, -0.222, 1.196, -2.895, 1.035, 0.335]], device=self.device)
 
         # Hand PCA target
         self.hand_target = \
@@ -340,7 +342,7 @@ class TiangongFabricNode(Node):
         # Create Tiangong pose-pca fabric
         tiangong_fabric = TiangongPoseFabric(
             batch_size, device=self.device, timestep=self.fabric_dt,
-            cuda_graph=self.cuda_graph
+            graph_capturable=self.cuda_graph
         )
 
         # Create integrator for the fabric
@@ -427,7 +429,7 @@ class TiangongFabricNode(Node):
                                 self.hand_target, self.palm_target, "euler_zyx",
                                 q.detach(), qd.detach(), object_ids, object_indicator)
                             # Step the fabric integrator
-                            tiangong_integrator.step(self.fabric_dt, q, qd, qdd)
+                            tiangong_integrator.step(q, qd, qdd, self.fabric_dt)
             # Set joint commands, which will be published over ROS
             self.set_joint_commands(q.detach().cpu().numpy().astype('float'),
                                     qd.detach().cpu().numpy().astype('float'),

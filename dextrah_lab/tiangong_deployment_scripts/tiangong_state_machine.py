@@ -127,7 +127,7 @@ class DextrahStateMachineNode(Node):
             np.array([0., 0.]).astype(float)
         # TODO 确定目标位置
         self.box_pose_target = \
-            np.array([0.02,  0.45,  0.385, 3.14*(3./4), 0.,  3.14]).astype(float)
+            np.array([0.140, -0.568, 1.048, -1.642, 0.797, -0.110]).astype(float)
         
         self.open_hand_target = \
             np.array([0., 0.]).astype(float)
@@ -282,7 +282,7 @@ class DextrahStateMachineNode(Node):
 
             if palm_pos_error < .2 and not self.opening_hand:
                 self.opening_hand = True
-            elif palm_pos_error < .2 and self.opening_hand and finger_aperture > .23: 
+            elif palm_pos_error < .2 and self.opening_hand and finger_aperture > .23:
                 self.moving_to_home = True
                 self.moving_to_box = False
                 self.opening_hand = False
@@ -317,7 +317,7 @@ class DextrahStateMachineNode(Node):
             # NOTE: this will still execute the RL actions this pass
             if obj_pos is not None:
                 # TODO 修改高度阈值
-                if obj_pos[2] > 0.45:
+                if obj_pos[2] > 1.0:
                     self.moving_to_box = True
 
                     # Set PCA actions to this set

@@ -260,14 +260,15 @@ class DextrahFGPNode(Node):
     def init_fgp(self):
         # get path to config file
         parent_path = str(pathlib.Path(__file__).parent.resolve())
-        parent_path = parent_path.replace("deployment_scripts", "")
+        parent_path = parent_path.replace("tiangong_deployment_scripts", "")
         agent_cfg_folder = "tasks/tiangong/agents"
         student_cfg_path = os.path.join(
             parent_path,
             agent_cfg_folder,
             # TODO: 选择配置文件
             #"rl_games_ppo_lstm_scratch_cnn_aux_stereo.yaml",
-            "rl_games_ppo_stereo_transformer.yaml"
+            # "rl_games_ppo_stereo_transformer.yaml"
+            "rl_games_ppo_lstm_cfg.yaml"
         )
 
         # get path to checkpoint
