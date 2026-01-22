@@ -39,8 +39,8 @@ from fabrics_sim.utils.utils import initialize_warp, capture_fabric
 # 控制方式：topic
 # 话题名称：/arm/cmd_pos
 # 数据定义位置：bodyctrl_msgs::msg::CmdSetMotorPosition.msg
-SPEED = 0.0  # rad/s
-CURRENT = 0.0  # A
+SPEED = 0.2  # rad/s
+CURRENT = 5.0  # A
 
 class TiangongFabricNode(Node):
     def __init__(self, speed_mode):
@@ -133,7 +133,7 @@ class TiangongFabricNode(Node):
         # Set up sub for receiving commands for the fabric
         # Subscriber for getting pose commands
         self._tiangong_pose_command_sub = self.create_subscription(
-            Float32MultiArray,
+            JointState,
             '/tiangong_fabric/pose_commands',
             self._tiangong_fabric_pose_command_sub_callback,
             1)
@@ -181,6 +181,7 @@ class TiangongFabricNode(Node):
                     set_motor_pos.name = name
                     set_motor_pos.pos = self._tiangong_joint_position_command[name - 21]
                     set_motor_pos.spd = SPEED
+                    # set_motor_pos.spd = self._tiangong_joint_velocity_command[name - 21]
                     set_motor_pos.cur = CURRENT
                     msg.cmds.append(set_motor_pos)
                 self._tiangong_pub.publish(msg)
@@ -240,19 +241,21 @@ class TiangongFabricNode(Node):
         """
         Sets the palm pose target coming in from the ROS topic.
         ------------------------------------------
-        :param msg: ROS 2 Float32MultiArray message type
+        :param msg: ROS 2 JointState message type
         """
         with self._palm_target_lock:
-            self.palm_target.copy_(torch.tensor([list(msg.data)], device=self.device))
+            self.palm_target.copy_(torch.tensor([list(msg.position)], device=self.device))
+            # print("Received palm target:", self.palm_target)
 
     def _tiangong_fabric_hand_command_sub_callback(self, msg):
         """
         Sets the PCA position target coming in from the ROS topic.
         ------------------------------------------
-        :param msg: ROS 2 CmdSetMotorPosition message type
+        :param msg: ROS 2 JointState message type
         """
         with self._hand_target_lock:
             self.hand_target.copy_(torch.tensor([list(msg.position)], device=self.device))
+            # print("Received hand target:", self.hand_target)
 
     def _tiangong_fabric_pub_callback(self):
         """
@@ -317,9 +320,9 @@ class TiangongFabricNode(Node):
         
         # 根据天工机器人实际情况修改后的初始值
         # Palm pose target
-        # 旋转顺序为 euler_zyx
-        self.palm_target = \
-            torch.tensor([[0.449, -0.222, 1.196, -2.895, 1.035, 0.335]], device=self.device)
+        # 旋转顺序为 euler_zyx, 注意传入旋转角的顺序为z,y,x
+        self.palm_target = torch.tensor([[0.449, -0.222, 1.196, 0.335, 1.035, -2.895]], device=self.device)
+        # self.palm_target = torch.tensor([[0.449, -0.222, 1.196, -2.895, 1.035, 0.335]], device=self.device)
 
         # Hand PCA target
         self.hand_target = \
@@ -429,7 +432,11 @@ class TiangongFabricNode(Node):
                                 self.hand_target, self.palm_target, "euler_zyx",
                                 q.detach(), qd.detach(), object_ids, object_indicator)
                             # Step the fabric integrator
-                            tiangong_integrator.step(q, qd, qdd, self.fabric_dt)
+                            q, qd, qdd = tiangong_integrator.step(q.detach(), qd.detach(), qdd.detach(), self.fabric_dt)
+                            print(self.palm_target, self.hand_target)
+                            print(f"q: {q}")
+                            print(f"qd: {qd}")
+                            print(f"qdd: {qdd}")
             # Set joint commands, which will be published over ROS
             self.set_joint_commands(q.detach().cpu().numpy().astype('float'),
                                     qd.detach().cpu().numpy().astype('float'),

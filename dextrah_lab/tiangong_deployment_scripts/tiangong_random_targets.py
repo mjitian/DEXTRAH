@@ -4,6 +4,7 @@ import rclpy
 from rclpy.node import Node
 import threading
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float32MultiArray
 
 import numpy as np
 import time
@@ -19,7 +20,7 @@ from dextrah_lab.tasks.tiangong.tiangong_constants import (
 
 
 
-class KukaAllegroRandomTargets(Node):
+class TiangongRandomTargets(Node):
     def __init__(self):
         super().__init__("tiangong_random_commander")
         # Create mutex lock
@@ -49,7 +50,7 @@ class KukaAllegroRandomTargets(Node):
             qos_profile=1,
         )
         self.tiangong_fabric_hand_commands_pub = self.create_publisher(
-            topic="/tiangong_fabric/pca_commands",
+            topic="/tiangong_fabric/hand_commands",
             msg_type=JointState,
             qos_profile=1,
         )
@@ -111,7 +112,7 @@ class KukaAllegroRandomTargets(Node):
 if __name__ == "__main__":
     rclpy.init()
     print("Sending random cspace position targets...")
-    random_commander = KukaAllegroRandomTargets()
+    random_commander = TiangongRandomTargets()
     thread = threading.Thread(target=rclpy.spin, args=(random_commander,), daemon=True)
     thread.start()
     time.sleep(1.)
