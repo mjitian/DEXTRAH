@@ -64,16 +64,16 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 
 from distillation import Dagger
-import dextrah_lab.tasks.dextrah_kuka_allegro.gym_setup
+import dextrah_lab.tasks.tiangong.gym_setup
 
-from dextrah_lab.distillation.a2c_with_aux_depth import A2CBuilder as A2CWithAuxDepthBuilder
-from dextrah_lab.distillation.a2c_with_aux_cnn import A2CBuilder as A2CWithAuxCNNBuilder
-from dextrah_lab.distillation.a2c_with_aux_cnn_stereo import A2CBuilder as A2CWithAuxCNNStereoBuilder
-from dextrah_lab.distillation.a2c_with_aux_cnn_stereo_recon import A2CBuilder as A2CWithAuxCNNStereoReconBuilder
-from dextrah_lab.distillation.a2c_with_pretrain import A2CBuilder as A2CWithPretrainBuilder
-from dextrah_lab.distillation.a2c_stereo_transformer import A2CBuilder as A2CStereoTransformerBuilder
-from dextrah_lab.distillation.a2c_mono_resnet import A2CBuilder as A2CMonoResnetBuilder
-from dextrah_lab.distillation.a2c_mono_transformer import A2CBuilder as A2CMonoTransformerBuilder
+from dextrah_lab.distillation_tiangong.a2c_with_aux_depth import A2CBuilder as A2CWithAuxDepthBuilder
+from dextrah_lab.distillation_tiangong.a2c_with_aux_cnn import A2CBuilder as A2CWithAuxCNNBuilder
+from dextrah_lab.distillation_tiangong.a2c_with_aux_cnn_stereo import A2CBuilder as A2CWithAuxCNNStereoBuilder
+from dextrah_lab.distillation_tiangong.a2c_with_aux_cnn_stereo_recon import A2CBuilder as A2CWithAuxCNNStereoReconBuilder
+from dextrah_lab.distillation_tiangong.a2c_with_pretrain import A2CBuilder as A2CWithPretrainBuilder
+from dextrah_lab.distillation_tiangong.a2c_stereo_transformer import A2CBuilder as A2CStereoTransformerBuilder
+from dextrah_lab.distillation_tiangong.a2c_mono_resnet import A2CBuilder as A2CMonoResnetBuilder
+from dextrah_lab.distillation_tiangong.a2c_mono_transformer import A2CBuilder as A2CMonoTransformerBuilder
 
 
 @hydra_task_config(args_cli.task, "rl_games_cfg_entry_point")
@@ -105,7 +105,9 @@ def main(env_cfg, agent_cfg: dict):
     ov_env = env.env
 
     parent_path = str(pathlib.Path(__file__).parent.parent.parent.resolve())
-    agent_cfg_folder = "dextrah_lab/tasks/dextrah_kuka_allegro/agents"
+
+    #agent
+    agent_cfg_folder = "dextrah_lab/tasks/tiangong/agents"
 
     if ov_env.simulate_stereo:
         student_cfg = os.path.join(
@@ -129,6 +131,7 @@ def main(env_cfg, agent_cfg: dict):
         "rl_games_ppo_lstm_cfg.yaml"
     )
 
+    #观测
     num_student_obs = ov_env.num_observations
     num_teacher_obs = ov_env.num_teacher_observations
     num_actions = ov_env.num_actions
@@ -153,7 +156,7 @@ def main(env_cfg, agent_cfg: dict):
     if rank == 0:
         train_dir = "runs"
         experiment_name = (
-            "Dextrah-Kuka-Allegro"
+            "tiangong"
             + datetime.now().strftime("_%d-%H-%M-%S")
         )
         experiment_dir = os.path.join(train_dir, experiment_name)

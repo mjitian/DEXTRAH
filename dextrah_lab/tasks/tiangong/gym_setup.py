@@ -16,7 +16,6 @@ from .tiangong_env_cfg import TiangongEnvCfg
 
 gym.register(
     id="tiangong",
-    #entry_point="isaaclab_tasks.direct.shadow_hand:ShadowHandEnv",
     entry_point="dextrah_lab.tasks.tiangong.tiangong_env:TiangongEnv",
     disable_env_checker=True,
     kwargs={

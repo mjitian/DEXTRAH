@@ -13,8 +13,6 @@ from rl_games.common.layers.recurrent import GRUWithDones, LSTMWithDones
 from rl_games.common.layers.value import TwoHotEncodedValue, DefaultValue
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
-from dextrah_lab.distillation.mono_encoder import MonoEncoder
-
 
 def _create_initializer(func, **kwargs):
     return lambda v : func(v, **kwargs)
@@ -457,11 +455,11 @@ class A2CBuilder(NetworkBuilder):
             #     input_width=self.img_width,
             #     device="cuda", depth=self.use_depth
             # )
-            self.feature_extractor = MonoEncoder(
-                backbone="convnext",
-                img_height=self.img_height,
-                img_width=self.img_width,
-                n_embd=None, n_head=4
+            self.feature_extractor = ResnetEncoder(
+                input_height=self.img_height,
+                input_width=self.img_width,
+                device="cuda",
+                train_resnet=True
             )
             mlp_args = {
                 'input_size' : in_mlp_shape, 

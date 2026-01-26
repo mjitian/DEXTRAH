@@ -5,77 +5,16 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 import torchvision
-from torch.nn import functional as F
-
+import torch.nn.functional as F
 
 from rl_games.algos_torch.d2rl import D2RLNet
 from rl_games.common.layers.recurrent import GRUWithDones, LSTMWithDones
 from rl_games.common.layers.value import TwoHotEncodedValue, DefaultValue
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
-from dextrah_lab.distillation.mono_encoder import MonoEncoder
-
 
 def _create_initializer(func, **kwargs):
     return lambda v : func(v, **kwargs)
-
-
-
-CNN_OUT_FEATURES = 32
-
-def get_standard_transform(device):
-    # Pre-create the mean and std tensors on the target device with bf16 dtype
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device, dtype=torch.bfloat16)
-    std = torch.tensor([0.229, 0.224, 0.225], device=device, dtype=torch.bfloat16)
-    
-    # Create a lambda transform that explicitly casts to bf16 and normalizes
-    transform = [
-        transforms.Lambda(lambda x: (x.to(dtype=torch.bfloat16) - mean[None, :, None, None]) / std[None, :, None, None])
-    ]
-    transform = transforms.Compose(transform)
-    return transform
-
-
-class ResnetEncoder(nn.Module):
-    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
-        super().__init__()
-        self.device = device
-
-        self.train_resnet = train_resnet
-
-        device = "cuda:0"
-        self.resnet18 = torchvision.models.resnet18(
-            weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        ).to(torch.bfloat16)
-        # remove last 2 layers of resnet18
-        self.resnet18.fc = nn.Identity()
-        # self.resnet18.avgpool = nn.Identity()
-
-        if train_resnet:
-            self.resnet18.train().to(device)
-        else:
-            self.resnet18.eval().to(device)
-
-        self.transform = get_standard_transform(self.device)
-
-        # Linear layers
-        self.linear = nn.Sequential(
-            nn.Linear(512, CNN_OUT_FEATURES)
-        )
-
-
-    def forward(self, x, train_encoder=True):
-        x = x.to(torch.bfloat16)
-
-        if train_encoder:
-            x = self.transform(x)
-            resnet_out = self.resnet18(x)
-        else:
-            with torch.no_grad():
-                x = self.transform(x)
-                resnet_out = self.resnet18(x)
-        out = self.linear(resnet_out.to(torch.float32))
-        return out
 
 
 class NetworkBuilder:
@@ -243,6 +182,155 @@ class NetworkBuilder:
             raise ValueError('value type is not "default", "legacy" or "two_hot_encoded"')
 
 
+CNN_OUT_FEATURES = 32
+
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
+import torch.nn.functional as F
+
+
+class SpatialSoftmax(nn.Module):
+    def __init__(self, height, width):
+        super(SpatialSoftmax, self).__init__()
+        self.height = height
+        self.width = width
+        
+        # Create a grid of coordinates (height, width)
+        pos_x, pos_y = torch.meshgrid(torch.linspace(-1, 1, width), torch.linspace(-1, 1, height))
+        self.register_buffer("pos_x", pos_x.reshape(height * width))
+        self.register_buffer("pos_y", pos_y.reshape(height * width))
+
+    def forward(self, x):
+        # Reshape input to (batch_size, num_channels, height * width)
+        b, c, h, w = x.shape
+        x = x.view(b, c, h * w)
+        
+        # Apply softmax over the spatial dimensions (height * width)
+        softmax_attention = F.softmax(x, dim=-1)  # [batch_size, num_channels, height * width]
+        
+        # Compute the expected coordinates for x and y
+        exp_x = torch.sum(softmax_attention * self.pos_x, dim=-1)  # [batch_size, num_channels]
+        exp_y = torch.sum(softmax_attention * self.pos_y, dim=-1)  # [batch_size, num_channels]
+        
+        # Concatenate x and y expected coordinates for each channel
+        spatial_softmax_output = torch.cat([exp_x, exp_y], dim=-1)  # [batch_size, num_channels * 2]
+        
+        return spatial_softmax_output
+
+# def conv_output_size(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
+#     """
+#     Utility function to compute the output size of a convolution layer.
+    
+#     h_w: Tuple[int, int] - height and width of the input
+#     kernel_size: int or Tuple[int, int] - size of the convolution kernel
+#     stride: int or Tuple[int, int] - stride of the convolution
+#     pad: int or Tuple[int, int] - padding
+#     dilation: int or Tuple[int, int] - dilation rate
+#     """
+#     if isinstance(kernel_size, tuple):
+#         kernel_h, kernel_w = kernel_size
+#     else:
+#         kernel_h, kernel_w = kernel_size, kernel_size
+    
+#     if isinstance(stride, tuple):
+#         stride_h, stride_w = stride
+#     else:
+#         stride_h, stride_w = stride, stride
+    
+#     if isinstance(pad, tuple):
+#         pad_h, pad_w = pad
+#     else:
+#         pad_h, pad_w = pad, pad
+    
+#     if isinstance(dilation, tuple):
+#         dilation_h, dilation_w = dilation
+#     else:
+#         dilation_h, dilation_w = dilation, dilation
+    
+#     h = (h_w[0] + 2 * pad_h - dilation_h * (kernel_h - 1) - 1) // stride_h + 1
+#     w = (h_w[1] + 2 * pad_w - dilation_w * (kernel_w - 1) - 1) // stride_w + 1
+#     return h, w
+
+
+# class CustomCNN(nn.Module):
+#     def __init__(self, input_height, input_width, device, depth=True):
+#         super().__init__()
+#         self.device = device
+#         num_channel = 1 if depth else 3
+
+#         # Initial input dimensions
+#         h, w = input_height, input_width
+
+#         # Layer configurations
+#         layers_config = [
+#             {'out_channels': 16, 'kernel_size': 6, 'stride': 2},
+#             {'out_channels': 32, 'kernel_size': 4, 'stride': 2},
+#             {'out_channels': 64, 'kernel_size': 4, 'stride': 2},
+#             {'out_channels': 128, 'kernel_size': 4, 'stride': 2},
+#             # Added Layer 5
+#             {'out_channels': 256, 'kernel_size': 3, 'stride': 1},
+#             # Added Layer 6
+#             {'out_channels': 512, 'kernel_size': 3, 'stride': 1},
+#         ]
+
+#         self.cnn = nn.Sequential()
+#         current_channels = num_channel
+#         for idx, layer_cfg in enumerate(layers_config):
+#             # Add Convolutional Layer
+#             self.cnn.add_module(f'conv{idx+1}',
+#                 nn.Conv2d(
+#                     current_channels, layer_cfg['out_channels'],
+#                     kernel_size=layer_cfg['kernel_size'],
+#                     stride=layer_cfg['stride'],
+#                     padding=1  # Padding is set to 1
+#                 )
+#             )
+#             # Add ReLU Activation
+#             self.cnn.add_module(f'relu{idx+1}', nn.ReLU())
+            
+#             # Compute output size with padding=1
+#             new_h, new_w = conv_output_size(
+#                 (h, w), 
+#                 kernel_size=layer_cfg['kernel_size'], 
+#                 stride=layer_cfg['stride'],
+#                 pad=1  # Pass padding value
+#             )
+            
+#             # Define LayerNorm with correct normalized_shape
+#             norm_shape = [layer_cfg['out_channels'], new_h, new_w]
+#             self.cnn.add_module(f'layernorm{idx+1}', nn.LayerNorm(norm_shape))
+            
+#             # Update h and w for next layer
+#             h, w = new_h, new_w
+#             current_channels = layer_cfg['out_channels']
+
+#         # Adaptive Pooling to handle variable input sizes
+#         # self.cnn.add_module('adaptive_pool', nn.AdaptiveAvgPool2d((1, 1)))
+
+#         # Define the linear layer with appropriate input features
+#         self.linear = nn.Sequential(
+#             nn.Linear(current_channels, CNN_OUT_FEATURES)  # Adjust CNN_OUT_FEATURES * 2 as needed
+#         )
+
+#         # Normalization parameters (ensure they match input channels)
+#         if depth:
+#             # If input is single-channel, adjust mean and std accordingly
+#             self.resnet18_mean = torch.tensor([0.485], device=self.device)
+#             self.resnet18_std = torch.tensor([0.229], device=self.device)
+#         else:
+#             self.resnet18_mean = torch.tensor([0.485, 0.456, 0.406], device=self.device)
+#             self.resnet18_std = torch.tensor([0.229, 0.224, 0.225], device=self.device)
+        
+#         self.resnet_transform = transforms.Normalize(self.resnet18_mean, self.resnet18_std)
+
+#     def forward(self, x):
+#         # Pass through CNN
+#         cnn_x = self.cnn(x)
+#         breakpoint()
+#         # Flatten and pass through Linear layer
+#         out = self.linear(cnn_x.view(-1, cnn_x.size(1)))
+#         return out
 
 def conv_output_size(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
     """
@@ -279,6 +367,7 @@ class CustomCNN(nn.Module):
         super().__init__()
         self.device = device
         num_channel = 1 if depth else 3
+        # num_channel *= 2
         
         # Initial input dimensions
         h, w = input_height, input_width
@@ -314,6 +403,7 @@ class CustomCNN(nn.Module):
             nn.ReLU(),
             nn.LayerNorm(layer4_norm_shape),  # Dynamically calculated layer norm
             nn.AdaptiveAvgPool2d((1, 1))  # Pool to (1, 1) feature map for any input size
+            # SpatialSoftmax(h, w),
         )
         
         # Linear layers
@@ -329,6 +419,76 @@ class CustomCNN(nn.Module):
         cnn_x = self.cnn(x)
         out = self.linear(cnn_x.view(-1, 128))
         return out
+    
+
+def get_standard_transform(device):
+    # Pre-create the mean and std tensors on the target device with bf16 dtype
+    mean = torch.tensor([0.485, 0.456, 0.406], device=device, dtype=torch.bfloat16)
+    std = torch.tensor([0.229, 0.224, 0.225], device=device, dtype=torch.bfloat16)
+    
+    # Create a lambda transform that explicitly casts to bf16 and normalizes
+    transform = [
+        transforms.Lambda(lambda x: (x.to(dtype=torch.bfloat16) - mean[None, :, None, None]) / std[None, :, None, None])
+    ]
+    transform = transforms.Compose(transform)
+    return transform
+
+
+class ResnetEncoder(nn.Module):
+    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
+        super().__init__()
+        self.device = device
+
+        self.train_resnet = train_resnet
+
+        device = "cuda:0"
+        self.resnet18 = torchvision.models.resnet18(
+            weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
+        ).to(torch.bfloat16)
+        # remove last 2 layers of resnet18
+        self.resnet18.fc = nn.Identity()
+        # self.resnet18.avgpool = nn.Identity()
+
+        if train_resnet:
+            self.resnet18.train().to(device)
+        else:
+            self.resnet18.eval().to(device)
+
+        self.transform = get_standard_transform(self.device)
+
+        # Linear layers
+        self.linear = nn.Sequential(
+            nn.Linear(512, CNN_OUT_FEATURES)
+        )
+
+
+    def forward(self, x, train_encoder=True):
+        x = x.to(torch.bfloat16)
+
+        if train_encoder:
+            x = self.transform(x)
+            resnet_out = self.resnet18(x)
+        else:
+            with torch.no_grad():
+                x = self.transform(x)
+                resnet_out = self.resnet18(x)
+        out = self.linear(resnet_out.to(torch.float32))
+        return out
+
+
+class KeypointModule(nn.Module):
+    def __init__(self, device):
+        super().__init__()
+        self.device = device
+        self.fc1 = nn.Linear(CNN_OUT_FEATURES, 128)
+        self.fc2 = nn.Linear(128, 2)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)
+        x = F.sigmoid(x)
+        return x
 
 
 class A2CBuilder(NetworkBuilder):
@@ -342,7 +502,7 @@ class A2CBuilder(NetworkBuilder):
         def __init__(self, params, **kwargs):
             actions_num = kwargs.pop('actions_num')
             input_shape = kwargs.pop('input_shape') 
-            input_shape = (input_shape[0] + CNN_OUT_FEATURES,)
+            input_shape = (input_shape[0] + 2*CNN_OUT_FEATURES,)
             self.value_size = kwargs.pop('value_size', 1)
             self.num_seqs = num_seqs = kwargs.pop('num_seqs', 1)
 
@@ -352,15 +512,15 @@ class A2CBuilder(NetworkBuilder):
             self.critic_cnn = nn.Sequential()
             self.actor_mlp = nn.Sequential()
             self.critic_mlp = nn.Sequential()
-            
+
             if self.has_cnn:
                 if self.permute_input:
                     input_shape = torch_ext.shape_whc_to_cwh(input_shape)
                 cnn_args = {
-                    'ctype' : self.cnn['type'], 
-                    'input_shape' : input_shape, 
-                    'convs' :self.cnn['convs'], 
-                    'activation' : self.cnn['activation'], 
+                    'ctype' : self.cnn['type'],
+                    'input_shape' : input_shape,
+                    'convs' :self.cnn['convs'],
+                    'activation' : self.cnn['activation'],
                     'norm_func_name' : self.normalization,
                 }
                 self.actor_cnn = self._build_conv(**cnn_args)
@@ -409,7 +569,7 @@ class A2CBuilder(NetworkBuilder):
                     }
 
                     self.aux_mlp = self._build_mlp(**mlp_args)
-
+                    # self.aux_mlp = torch.compile(self.aux_mlp)
                     self.aux_networks = nn.ModuleDict()
 
                     for output_name in self.aux_outputs:
@@ -449,33 +609,38 @@ class A2CBuilder(NetworkBuilder):
                             self.activations_factory.create(self.aux_out_activation)
                         )
 
-            self.img_height = int(120*2)
-            self.img_width = int(160*2)
+            self.img_height = int(120 * 2)
+            self.img_width = int(160 * 2)
             self.use_depth = False
-            # self.feature_extractor = CustomCNN(
+            self.feature_extractor = ResnetEncoder(
+                input_height=self.img_height,
+                input_width=self.img_width,
+                device="cuda", train_resnet=True
+            )
+            # self.keypoint_head = KeypointModule(device="cuda")
+            # self.feature_extractor = torch.compile(self.feature_extractor)
+            # self.feature_extractor_right = CustomCNN(
             #     input_height=self.img_height,
             #     input_width=self.img_width,
             #     device="cuda", depth=self.use_depth
             # )
-            self.feature_extractor = MonoEncoder(
-                backbone="convnext",
-                img_height=self.img_height,
-                img_width=self.img_width,
-                n_embd=None, n_head=4
-            )
             mlp_args = {
-                'input_size' : in_mlp_shape, 
-                'units' : self.units, 
-                'activation' : self.activation, 
+                'input_size' : in_mlp_shape + input_shape[0],
+                'units' : self.units,
+                'activation' : self.activation,
                 'norm_func_name' : self.normalization,
                 'dense_func' : torch.nn.Linear,
                 'd2rl' : self.is_d2rl,
                 'norm_only_first_layer' : self.norm_only_first_layer
             }
             self.actor_mlp = self._build_mlp(**mlp_args)
+            # self.actor_mlp = torch.compile(self.actor_mlp)
             self.running_mean_img = True
             num_channels = 1 if self.use_depth else 3
-            self.running_mean_std = RunningMeanStd(
+            self.running_mean_std_left = RunningMeanStd(
+                (num_channels, self.img_height, self.img_width)
+            )
+            self.running_mean_std_right = RunningMeanStd(
                 (num_channels, self.img_height, self.img_width)
             )
             if self.separate:
@@ -515,31 +680,52 @@ class A2CBuilder(NetworkBuilder):
                 if isinstance(m, nn.Linear):
                     mlp_init(m.weight)
                     if getattr(m, "bias", None) is not None:
-                        torch.nn.init.zeros_(m.bias)    
+                        torch.nn.init.zeros_(m.bias)
 
             if self.is_continuous:
                 mu_init(self.mu.weight)
                 if self.fixed_sigma:
                     sigma_init(self.sigma)
                 else:
-                    sigma_init(self.sigma.weight)  
+                    sigma_init(self.sigma.weight)
 
         def forward(self, obs_dict):
             obs = obs_dict['obs']
-            if "img" in obs_dict:
-                if self.use_depth:
-                    img = obs_dict["img"]
-                else:
-                    img = obs_dict["rgb"] #- torch.mean(
-                    #     obs_dict["rgb"], dim=(2, 3), keepdim=True
-                    # )
-                with torch.no_grad():
-                    if self.running_mean_img:
-                        img_tensor = self.running_mean_std(img)
-                    else:
-                        img_tensor = img
-                img_features = self.feature_extractor(img_tensor)
-                obs = torch.cat([obs, img_features], dim=-1)
+            if "img_left" in obs_dict:
+                img_left = obs_dict['img_left'] #- torch.mean(
+                #     obs_dict["img_left"], dim=(2, 3), keepdim=True
+                # )
+                img_right = obs_dict['img_right'] #- torch.mean(
+                #     obs_dict["img_right"], dim=(2, 3), keepdim=True
+                # )
+                img_left = self.running_mean_std_left(img_left)
+                img_right = self.running_mean_std_right(img_right)
+
+                combined_embeds = self.feature_extractor(
+                    torch.cat([img_left, img_right], dim=0)
+                )
+
+                img_features_left, img_features_right = combined_embeds.chunk(
+                    2, dim=0
+                )
+                # img_features_left = self.feature_extractor(
+                #     img_left
+                # )
+                # img_features_right = self.feature_extractor(
+                #     img_right
+                # )
+                # imgs = torch.cat([img_left, img_right], dim=1)
+                # img_features = self.feature_extractor(imgs)
+                obs = torch.cat(
+                    [obs, img_features_left, img_features_right],
+                    dim=-1
+                )
+                # kpt_left = self.keypoint_head(img_features_left)
+                # kpt_right = self.keypoint_head(img_features_left)
+                # obs = torch.cat(
+                #     [obs, img_features],
+                #     dim=-1
+                # )
             # obs = self.running_mean_std(obs_dict['observations'])
             # TODO: fix this and allow for normalization! 
             # obs = obs_dict["observations"]
@@ -681,7 +867,11 @@ class A2CBuilder(NetworkBuilder):
                     if self.rnn_ln:
                         out = self.layer_norm(out)
                     if self.is_rnn_before_mlp:
-                        out = self.actor_mlp(out)
+                        out = self.actor_mlp(
+                            torch.cat(
+                                [out, concatenated_input], dim=-1
+                            )
+                        )
                     if type(states) is not tuple:
                         states = (states,)
                 else:
@@ -696,6 +886,8 @@ class A2CBuilder(NetworkBuilder):
                     )
                     for output_name in self.aux_outputs:
                         self.last_aux_out[output_name] = self.aux_networks[output_name](aux_input)
+                    # self.last_aux_out["obj_uv_left"] = kpt_left
+                    # self.last_aux_out["obj_uv_right"] = kpt_right
 
                 value = self.value_act(self.value(out))
 

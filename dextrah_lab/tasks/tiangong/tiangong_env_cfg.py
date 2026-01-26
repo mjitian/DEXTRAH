@@ -224,7 +224,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
         0.000,   0.000,  0.000,  1.000
     ]).reshape(4, 4)
     camera_pos = tf[:3, 3].tolist()
-    camera_rot = [-0.645, -0.645, -0.291, 0.291]
+    camera_rot = [-0.645, 0.645, -0.291, 0.291]
     del tf
     # 略微随机化相机的位置和朝向
     camera_rand_rot_range = 3
@@ -298,7 +298,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
 
     # 抓取标准：保持原配置
     min_num_episode_steps = 60
-    object_height_thresh = 0.15
+    object_height_thresh = 0.1
 
     # 物体生成参数：保持原配置
     x_center = 0.55
@@ -306,7 +306,7 @@ class TiangongEnvCfg(DirectRLEnvCfg):
     y_center = -0.1
     y_width = 0.8
 
-    # DR控制：保持原配置
+    # ADR控制：保持原配置
     enable_adr = True
     num_adr_increments = 50
     starting_adr_increments = 0
@@ -385,9 +385,9 @@ class TiangongEnvCfg(DirectRLEnvCfg):
             "robot_joint_vel_bias": (0.0, 0.08),  # rad
         },
         "reward_weights": {
-            "finger_curl_reg": (-0.005, -0.005),  # 降低手指卷曲惩罚 w
+            "finger_curl_reg": (-0.01, -0.005),
             "object_to_goal_sharpness": (-15., -20.),
-            "lift_weight": (10., 0.)  # 提高提升奖励（鼓励抓取成功） w
+            "lift_weight": (5., 0.)
         },
         "pd_targets": {
             "velocity_target_factor": (1., 0.)

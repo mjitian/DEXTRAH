@@ -4,78 +4,16 @@ from rl_games.algos_torch import torch_ext
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import torchvision
-from torch.nn import functional as F
-
+import torch.nn.functional as F
 
 from rl_games.algos_torch.d2rl import D2RLNet
 from rl_games.common.layers.recurrent import GRUWithDones, LSTMWithDones
 from rl_games.common.layers.value import TwoHotEncodedValue, DefaultValue
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
-from dextrah_lab.distillation.mono_encoder import MonoEncoder
-
 
 def _create_initializer(func, **kwargs):
     return lambda v : func(v, **kwargs)
-
-
-
-CNN_OUT_FEATURES = 32
-
-def get_standard_transform(device):
-    # Pre-create the mean and std tensors on the target device with bf16 dtype
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device, dtype=torch.bfloat16)
-    std = torch.tensor([0.229, 0.224, 0.225], device=device, dtype=torch.bfloat16)
-    
-    # Create a lambda transform that explicitly casts to bf16 and normalizes
-    transform = [
-        transforms.Lambda(lambda x: (x.to(dtype=torch.bfloat16) - mean[None, :, None, None]) / std[None, :, None, None])
-    ]
-    transform = transforms.Compose(transform)
-    return transform
-
-
-class ResnetEncoder(nn.Module):
-    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
-        super().__init__()
-        self.device = device
-
-        self.train_resnet = train_resnet
-
-        device = "cuda:0"
-        self.resnet18 = torchvision.models.resnet18(
-            weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        ).to(torch.bfloat16)
-        # remove last 2 layers of resnet18
-        self.resnet18.fc = nn.Identity()
-        # self.resnet18.avgpool = nn.Identity()
-
-        if train_resnet:
-            self.resnet18.train().to(device)
-        else:
-            self.resnet18.eval().to(device)
-
-        self.transform = get_standard_transform(self.device)
-
-        # Linear layers
-        self.linear = nn.Sequential(
-            nn.Linear(512, CNN_OUT_FEATURES)
-        )
-
-
-    def forward(self, x, train_encoder=True):
-        x = x.to(torch.bfloat16)
-
-        if train_encoder:
-            x = self.transform(x)
-            resnet_out = self.resnet18(x)
-        else:
-            with torch.no_grad():
-                x = self.transform(x)
-                resnet_out = self.resnet18(x)
-        out = self.linear(resnet_out.to(torch.float32))
-        return out
 
 
 class NetworkBuilder:
@@ -243,7 +181,78 @@ class NetworkBuilder:
             raise ValueError('value type is not "default", "legacy" or "two_hot_encoded"')
 
 
+CNN_OUT_FEATURES = 32
 
+
+class Transformer_Block(nn.Module):
+    def __init__(self, latent_dim, num_head, dropout_rate, context_len) -> None:
+        super().__init__()
+        self.num_head = num_head
+        self.context_len = context_len
+        self.attn_mask = torch.nn.Transformer.generate_square_subsequent_mask(
+            context_len
+        ).to("cuda")
+        self.latent_dim = latent_dim
+        self.ln_1 = nn.LayerNorm(latent_dim)
+        self.attn = nn.MultiheadAttention(latent_dim, num_head, dropout=dropout_rate, batch_first=True)
+        self.ln_2 = nn.LayerNorm(latent_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(latent_dim, 4 * latent_dim),
+            nn.GELU(),
+            nn.Linear(4 * latent_dim, latent_dim),
+            nn.Dropout(dropout_rate),
+        )
+
+    def forward(self, x, inference=False):
+        # x is (batch_size, seq_len, latent_dim)
+
+        # attn_mask = torch.nn.Transformer.generate_square_subsequent_mask(x.shape[1]).to(x.device)
+
+        x = self.ln_1(x)
+        x = x + self.attn(x, x, x, need_weights=False, is_causal=True, attn_mask=self.attn_mask)[0]
+        x = self.ln_2(x)
+        x = x + self.mlp(x)
+
+        return x
+
+
+class Transformer(nn.Module):
+    def __init__(self, input_dim, output_dim, context_len, latent_dim=128, num_head=4, num_layer=4, dropout_rate=0.1) -> None:
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.context_len = context_len
+        self.latent_dim = latent_dim
+        self.num_head = num_head
+        self.num_layer = num_layer
+        self.input_layer = nn.Sequential(
+            nn.Linear(input_dim, latent_dim),
+            nn.Dropout(dropout_rate),
+        )
+        self.weight_pos_embed = nn.Embedding(context_len, latent_dim)
+        self.attention_blocks = nn.Sequential(
+            *[Transformer_Block(latent_dim, num_head, dropout_rate, context_len) for _ in range(num_layer)],
+        )
+        self.output_layer = nn.Sequential(
+            nn.LayerNorm(latent_dim),
+            nn.Linear(latent_dim, output_dim),
+        )
+
+    def forward(self, x):
+        # input is (batch_size, seq_len, input_dim)
+        x = self.input_layer(x)
+        x = x + self.weight_pos_embed(torch.arange(x.shape[1], device=x.device))
+        x = self.attention_blocks(x)
+
+        # # take the last token
+        # x = x[:, -1, :]
+        x = self.output_layer(x)
+
+        return x
+
+
+CNN_OUT_FEATURES = 32
+AUX_LATENT_DIM = 64
 def conv_output_size(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
     """
     Utility function to compute the output size of a convolution layer.
@@ -273,12 +282,39 @@ def conv_output_size(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
     w = (h_w[1] + 2 * pad_w - dilation * (kernel_w - 1) - 1) // stride_w + 1
     return h, w
 
+class SpatialSoftmax(nn.Module):
+    def __init__(self, height, width):
+        super(SpatialSoftmax, self).__init__()
+        self.height = height
+        self.width = width
+        
+        # Create a grid of coordinates (height, width)
+        pos_x, pos_y = torch.meshgrid(torch.linspace(-1, 1, width), torch.linspace(-1, 1, height))
+        self.register_buffer("pos_x", pos_x.reshape(height * width))
+        self.register_buffer("pos_y", pos_y.reshape(height * width))
 
+    def forward(self, x):
+        # Reshape input to (batch_size, num_channels, height * width)
+        b, c, h, w = x.shape
+        x = x.view(b, c, h * w)
+        
+        # Apply softmax over the spatial dimensions (height * width)
+        softmax_attention = F.softmax(x, dim=-1)  # [batch_size, num_channels, height * width]
+        
+        # Compute the expected coordinates for x and y
+        exp_x = torch.sum(softmax_attention * self.pos_x, dim=-1)  # [batch_size, num_channels]
+        exp_y = torch.sum(softmax_attention * self.pos_y, dim=-1)  # [batch_size, num_channels]
+        
+        # Concatenate x and y expected coordinates for each channel
+        spatial_softmax_output = torch.cat([exp_x, exp_y], dim=-1)  # [batch_size, num_channels * 2]
+        
+        return spatial_softmax_output
 class CustomCNN(nn.Module):
     def __init__(self, input_height, input_width, device, depth=True):
         super().__init__()
         self.device = device
         num_channel = 1 if depth else 3
+        # num_channel *= 2
         
         # Initial input dimensions
         h, w = input_height, input_width
@@ -312,13 +348,12 @@ class CustomCNN(nn.Module):
             nn.LayerNorm(layer3_norm_shape),  # Dynamically calculated layer norm
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
-            nn.LayerNorm(layer4_norm_shape),  # Dynamically calculated layer norm
-            nn.AdaptiveAvgPool2d((1, 1))  # Pool to (1, 1) feature map for any input size
+            SpatialSoftmax(h, w),
         )
         
         # Linear layers
         self.linear = nn.Sequential(
-            nn.Linear(128, CNN_OUT_FEATURES)
+            nn.Linear(128 * 2, CNN_OUT_FEATURES)
         )
 
         self.resnet18_mean = torch.tensor([0.485, 0.0456, 0.0406], device=self.device)
@@ -327,7 +362,7 @@ class CustomCNN(nn.Module):
 
     def forward(self, x):
         cnn_x = self.cnn(x)
-        out = self.linear(cnn_x.view(-1, 128))
+        out = self.linear(cnn_x.view(-1, 128*2))
         return out
 
 
@@ -342,7 +377,11 @@ class A2CBuilder(NetworkBuilder):
         def __init__(self, params, **kwargs):
             actions_num = kwargs.pop('actions_num')
             input_shape = kwargs.pop('input_shape') 
-            input_shape = (input_shape[0] + CNN_OUT_FEATURES,)
+            input_shape = (input_shape[0] + 2*CNN_OUT_FEATURES,)
+            self.num_obs = input_shape[0]
+            self.num_acts = actions_num
+            self.num_envs = kwargs.pop('num_envs', 1)
+
             self.value_size = kwargs.pop('value_size', 1)
             self.num_seqs = num_seqs = kwargs.pop('num_seqs', 1)
 
@@ -352,15 +391,15 @@ class A2CBuilder(NetworkBuilder):
             self.critic_cnn = nn.Sequential()
             self.actor_mlp = nn.Sequential()
             self.critic_mlp = nn.Sequential()
-            
+
             if self.has_cnn:
                 if self.permute_input:
                     input_shape = torch_ext.shape_whc_to_cwh(input_shape)
                 cnn_args = {
-                    'ctype' : self.cnn['type'], 
-                    'input_shape' : input_shape, 
-                    'convs' :self.cnn['convs'], 
-                    'activation' : self.cnn['activation'], 
+                    'ctype' : self.cnn['type'],
+                    'input_shape' : input_shape,
+                    'convs' :self.cnn['convs'],
+                    'activation' : self.cnn['activation'],
                     'norm_func_name' : self.normalization,
                 }
                 self.actor_cnn = self._build_conv(**cnn_args)
@@ -409,7 +448,7 @@ class A2CBuilder(NetworkBuilder):
                     }
 
                     self.aux_mlp = self._build_mlp(**mlp_args)
-
+                    # self.aux_mlp = torch.compile(self.aux_mlp)
                     self.aux_networks = nn.ModuleDict()
 
                     for output_name in self.aux_outputs:
@@ -428,7 +467,7 @@ class A2CBuilder(NetworkBuilder):
                 if self.is_aux:
                     mlp_args = {
                         # 'input_size': self.rnn_units + in_mlp_shape,
-                        'input_size': self.units[-1] + input_shape[0],
+                        'input_size': AUX_LATENT_DIM,
                         'units': self.aux_units,
                         'activation': self.aux_activation,
                         'norm_func_name': self.aux_network.get('normalization', None),
@@ -449,30 +488,42 @@ class A2CBuilder(NetworkBuilder):
                             self.activations_factory.create(self.aux_out_activation)
                         )
 
-            self.img_height = int(120*2)
-            self.img_width = int(160*2)
+            self.img_height = int(120 * 2)
+            self.img_width = int(160 * 2)
             self.use_depth = False
-            # self.feature_extractor = CustomCNN(
+            self.feature_extractor = CustomCNN(
+                input_height=self.img_height,
+                input_width=self.img_width,
+                device="cuda", depth=self.use_depth
+            )
+            # self.feature_extractor = torch.compile(self.feature_extractor)
+            if self.is_aux:
+                self.transformer_output_size = self.num_acts + AUX_LATENT_DIM # latent dim for aux
+            else:
+                self.transformer_output_size = self.num_acts
+
+            self.transformer = Transformer(
+                self.num_obs,
+                self.transformer_output_size + 1,
+                self.transformer_context_length,
+            )
+            self.init_tensors()
+            # self.feature_extractor_right = CustomCNN(
             #     input_height=self.img_height,
             #     input_width=self.img_width,
             #     device="cuda", depth=self.use_depth
             # )
-            self.feature_extractor = MonoEncoder(
-                backbone="convnext",
-                img_height=self.img_height,
-                img_width=self.img_width,
-                n_embd=None, n_head=4
-            )
             mlp_args = {
-                'input_size' : in_mlp_shape, 
-                'units' : self.units, 
-                'activation' : self.activation, 
+                'input_size' : in_mlp_shape + input_shape[0],
+                'units' : self.units,
+                'activation' : self.activation,
                 'norm_func_name' : self.normalization,
                 'dense_func' : torch.nn.Linear,
                 'd2rl' : self.is_d2rl,
                 'norm_only_first_layer' : self.norm_only_first_layer
             }
             self.actor_mlp = self._build_mlp(**mlp_args)
+            # self.actor_mlp = torch.compile(self.actor_mlp)
             self.running_mean_img = True
             num_channels = 1 if self.use_depth else 3
             self.running_mean_std = RunningMeanStd(
@@ -515,31 +566,103 @@ class A2CBuilder(NetworkBuilder):
                 if isinstance(m, nn.Linear):
                     mlp_init(m.weight)
                     if getattr(m, "bias", None) is not None:
-                        torch.nn.init.zeros_(m.bias)    
+                        torch.nn.init.zeros_(m.bias)
 
             if self.is_continuous:
                 mu_init(self.mu.weight)
                 if self.fixed_sigma:
                     sigma_init(self.sigma)
                 else:
-                    sigma_init(self.sigma.weight)  
+                    sigma_init(self.sigma.weight)
+
+        def init_tensors(self):
+            self.observation_history = torch.zeros(
+                (self.num_envs, self.transformer_context_length, self.num_obs),
+                dtype=torch.float,
+            )
+            self.action_history = torch.zeros(
+                (self.num_envs, self.transformer_context_length, self.num_acts),
+                dtype=torch.float,
+            )
+            self.history_mask = torch.zeros(
+                (self.num_envs, self.transformer_context_length),
+                dtype=torch.bool,
+            )
+
+        def reset_idx(self, env_ids):
+            self.observation_history[env_ids] = 0
+            self.action_history[env_ids] = 0
+            self.history_mask[env_ids] = 0
+
+        def update_observation_history(self, obs):
+            # call in post_physics_step
+            self.observation_history = torch.roll(self.observation_history, shifts=-1, dims=1).detach()
+            self.history_mask = torch.roll(self.history_mask, shifts=-1, dims=1)
+
+            self.observation_history[:, -1, :] = obs
+            self.history_mask[:, -1] = 1
+
+        def update_action_history(self, actions):
+            # call in pre_physics_step
+            self.action_history = torch.roll(self.action_history, shifts=-1, dims=1)
+            self.action_history[:, -1, :] = actions
 
         def forward(self, obs_dict):
             obs = obs_dict['obs']
-            if "img" in obs_dict:
-                if self.use_depth:
-                    img = obs_dict["img"]
-                else:
-                    img = obs_dict["rgb"] #- torch.mean(
-                    #     obs_dict["rgb"], dim=(2, 3), keepdim=True
-                    # )
-                with torch.no_grad():
-                    if self.running_mean_img:
-                        img_tensor = self.running_mean_std(img)
-                    else:
-                        img_tensor = img
-                img_features = self.feature_extractor(img_tensor)
-                obs = torch.cat([obs, img_features], dim=-1)
+            if self.observation_history.device != obs.device:
+                self.observation_history = self.observation_history.to(obs.device)
+                self.action_history = self.action_history.to(obs.device)
+                self.history_mask = self.history_mask.to(obs.device)
+
+            if "img_left" in obs_dict:
+                img_left = obs_dict['img_left'] - torch.mean(
+                    obs_dict["img_left"], dim=(2, 3), keepdim=True
+                )
+                img_right = obs_dict['img_right'] - torch.mean(
+                    obs_dict["img_right"], dim=(2, 3), keepdim=True
+                )
+
+                combined_embeds = self.feature_extractor(
+                    torch.cat([img_left, img_right], dim=0)
+                )
+
+                img_features_left, img_features_right = combined_embeds.chunk(
+                    2, dim=0
+                )
+                # img_features_left = self.feature_extractor(
+                #     img_left
+                # )
+                # img_features_right = self.feature_extractor(
+                #     img_right
+                # )
+                # imgs = torch.cat([img_left, img_right], dim=1)
+                # img_features = self.feature_extractor(imgs)
+                obs = torch.cat(
+                    [obs, img_features_left, img_features_right],
+                    dim=-1
+                )
+            
+            self.update_observation_history(obs)
+            masked_obs = self.observation_history * self.history_mask.unsqueeze(-1)
+            transformer_out = self.transformer(masked_obs)
+            mu = transformer_out[:, -1, :self.num_acts]
+            value = transformer_out[:, -1, self.num_acts]
+            states = None
+            sigma = mu * 0.0 + self.sigma_act(self.sigma)
+            if self.is_aux:
+                self.last_aux_out = {}
+                aux_input = self.aux_mlp(
+                    transformer_out[:, -1, self.num_acts+1:]
+                )
+                for output_name in self.aux_outputs:
+                    self.last_aux_out[output_name] = self.aux_networks[output_name](aux_input)
+                states = (states, self.last_aux_out)
+
+            return mu, sigma, value, states
+                # obs = torch.cat(
+                #     [obs, img_features],
+                #     dim=-1
+                # )
             # obs = self.running_mean_std(obs_dict['observations'])
             # TODO: fix this and allow for normalization! 
             # obs = obs_dict["observations"]
@@ -681,7 +804,11 @@ class A2CBuilder(NetworkBuilder):
                     if self.rnn_ln:
                         out = self.layer_norm(out)
                     if self.is_rnn_before_mlp:
-                        out = self.actor_mlp(out)
+                        out = self.actor_mlp(
+                            torch.cat(
+                                [out, concatenated_input], dim=-1
+                            )
+                        )
                     if type(states) is not tuple:
                         states = (states,)
                 else:
@@ -755,6 +882,7 @@ class A2CBuilder(NetworkBuilder):
             self.norm_only_first_layer = params['mlp'].get('norm_only_first_layer', False)
             self.value_activation = params.get('value_activation', 'None')
             self.normalization = params.get('normalization', None)
+            self.has_transformer = "transformer" in params
             self.has_rnn = 'rnn' in params
             self.has_space = 'space' in params
             self.central_value = params.get('central_value', False)
@@ -789,6 +917,8 @@ class A2CBuilder(NetworkBuilder):
                 self.is_continuous = False
                 self.is_multi_discrete = False
 
+            if self.has_transformer:
+                self.transformer_context_length = params['transformer']['context_length']
             if self.has_rnn:
                 self.rnn_units = params['rnn']['units']
                 self.rnn_layers = params['rnn']['layers']

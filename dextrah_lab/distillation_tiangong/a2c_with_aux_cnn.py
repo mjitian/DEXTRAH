@@ -4,78 +4,15 @@ from rl_games.algos_torch import torch_ext
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import torchvision
-from torch.nn import functional as F
-
 
 from rl_games.algos_torch.d2rl import D2RLNet
 from rl_games.common.layers.recurrent import GRUWithDones, LSTMWithDones
 from rl_games.common.layers.value import TwoHotEncodedValue, DefaultValue
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
-from dextrah_lab.distillation.mono_encoder import MonoEncoder
-
 
 def _create_initializer(func, **kwargs):
     return lambda v : func(v, **kwargs)
-
-
-
-CNN_OUT_FEATURES = 32
-
-def get_standard_transform(device):
-    # Pre-create the mean and std tensors on the target device with bf16 dtype
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device, dtype=torch.bfloat16)
-    std = torch.tensor([0.229, 0.224, 0.225], device=device, dtype=torch.bfloat16)
-    
-    # Create a lambda transform that explicitly casts to bf16 and normalizes
-    transform = [
-        transforms.Lambda(lambda x: (x.to(dtype=torch.bfloat16) - mean[None, :, None, None]) / std[None, :, None, None])
-    ]
-    transform = transforms.Compose(transform)
-    return transform
-
-
-class ResnetEncoder(nn.Module):
-    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
-        super().__init__()
-        self.device = device
-
-        self.train_resnet = train_resnet
-
-        device = "cuda:0"
-        self.resnet18 = torchvision.models.resnet18(
-            weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        ).to(torch.bfloat16)
-        # remove last 2 layers of resnet18
-        self.resnet18.fc = nn.Identity()
-        # self.resnet18.avgpool = nn.Identity()
-
-        if train_resnet:
-            self.resnet18.train().to(device)
-        else:
-            self.resnet18.eval().to(device)
-
-        self.transform = get_standard_transform(self.device)
-
-        # Linear layers
-        self.linear = nn.Sequential(
-            nn.Linear(512, CNN_OUT_FEATURES)
-        )
-
-
-    def forward(self, x, train_encoder=True):
-        x = x.to(torch.bfloat16)
-
-        if train_encoder:
-            x = self.transform(x)
-            resnet_out = self.resnet18(x)
-        else:
-            with torch.no_grad():
-                x = self.transform(x)
-                resnet_out = self.resnet18(x)
-        out = self.linear(resnet_out.to(torch.float32))
-        return out
 
 
 class NetworkBuilder:
@@ -243,6 +180,7 @@ class NetworkBuilder:
             raise ValueError('value type is not "default", "legacy" or "two_hot_encoded"')
 
 
+CNN_OUT_FEATURES = 32
 
 def conv_output_size(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
     """
@@ -452,16 +390,10 @@ class A2CBuilder(NetworkBuilder):
             self.img_height = int(120*2)
             self.img_width = int(160*2)
             self.use_depth = False
-            # self.feature_extractor = CustomCNN(
-            #     input_height=self.img_height,
-            #     input_width=self.img_width,
-            #     device="cuda", depth=self.use_depth
-            # )
-            self.feature_extractor = MonoEncoder(
-                backbone="convnext",
-                img_height=self.img_height,
-                img_width=self.img_width,
-                n_embd=None, n_head=4
+            self.feature_extractor = CustomCNN(
+                input_height=self.img_height,
+                input_width=self.img_width,
+                device="cuda", depth=self.use_depth
             )
             mlp_args = {
                 'input_size' : in_mlp_shape, 
@@ -530,9 +462,9 @@ class A2CBuilder(NetworkBuilder):
                 if self.use_depth:
                     img = obs_dict["img"]
                 else:
-                    img = obs_dict["rgb"] #- torch.mean(
-                    #     obs_dict["rgb"], dim=(2, 3), keepdim=True
-                    # )
+                    img = obs_dict["rgb"] - torch.mean(
+                        obs_dict["rgb"], dim=(2, 3), keepdim=True
+                    )
                 with torch.no_grad():
                     if self.running_mean_img:
                         img_tensor = self.running_mean_std(img)

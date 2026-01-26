@@ -4,78 +4,15 @@ from rl_games.algos_torch import torch_ext
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import torchvision
-from torch.nn import functional as F
-
 
 from rl_games.algos_torch.d2rl import D2RLNet
 from rl_games.common.layers.recurrent import GRUWithDones, LSTMWithDones
 from rl_games.common.layers.value import TwoHotEncodedValue, DefaultValue
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
-from dextrah_lab.distillation.mono_encoder import MonoEncoder
-
 
 def _create_initializer(func, **kwargs):
     return lambda v : func(v, **kwargs)
-
-
-
-CNN_OUT_FEATURES = 32
-
-def get_standard_transform(device):
-    # Pre-create the mean and std tensors on the target device with bf16 dtype
-    mean = torch.tensor([0.485, 0.456, 0.406], device=device, dtype=torch.bfloat16)
-    std = torch.tensor([0.229, 0.224, 0.225], device=device, dtype=torch.bfloat16)
-    
-    # Create a lambda transform that explicitly casts to bf16 and normalizes
-    transform = [
-        transforms.Lambda(lambda x: (x.to(dtype=torch.bfloat16) - mean[None, :, None, None]) / std[None, :, None, None])
-    ]
-    transform = transforms.Compose(transform)
-    return transform
-
-
-class ResnetEncoder(nn.Module):
-    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
-        super().__init__()
-        self.device = device
-
-        self.train_resnet = train_resnet
-
-        device = "cuda:0"
-        self.resnet18 = torchvision.models.resnet18(
-            weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
-        ).to(torch.bfloat16)
-        # remove last 2 layers of resnet18
-        self.resnet18.fc = nn.Identity()
-        # self.resnet18.avgpool = nn.Identity()
-
-        if train_resnet:
-            self.resnet18.train().to(device)
-        else:
-            self.resnet18.eval().to(device)
-
-        self.transform = get_standard_transform(self.device)
-
-        # Linear layers
-        self.linear = nn.Sequential(
-            nn.Linear(512, CNN_OUT_FEATURES)
-        )
-
-
-    def forward(self, x, train_encoder=True):
-        x = x.to(torch.bfloat16)
-
-        if train_encoder:
-            x = self.transform(x)
-            resnet_out = self.resnet18(x)
-        else:
-            with torch.no_grad():
-                x = self.transform(x)
-                resnet_out = self.resnet18(x)
-        out = self.linear(resnet_out.to(torch.float32))
-        return out
 
 
 class NetworkBuilder:
@@ -243,6 +180,7 @@ class NetworkBuilder:
             raise ValueError('value type is not "default", "legacy" or "two_hot_encoded"')
 
 
+CNN_OUT_FEATURES = 32
 
 def conv_output_size(h_w, kernel_size=1, stride=1, pad=0, dilation=1):
     """
@@ -279,6 +217,7 @@ class CustomCNN(nn.Module):
         super().__init__()
         self.device = device
         num_channel = 1 if depth else 3
+        # num_channel *= 2
         
         # Initial input dimensions
         h, w = input_height, input_width
@@ -331,6 +270,142 @@ class CustomCNN(nn.Module):
         return out
 
 
+def convtranspose_output_size(h_w, kernel_size=1, stride=1, pad=0, dilation=1, output_padding=0):
+    """
+    Utility function to compute the output size of a ConvTranspose2d layer.
+    
+    h_w: Tuple[int, int] - height and width of the input
+    kernel_size: int or Tuple[int, int] - size of the convolution kernel
+    stride: int or Tuple[int, int] - stride of the convolution
+    pad: int or Tuple[int, int] - padding
+    dilation: int or Tuple[int, int] - dilation rate
+    output_padding: int or Tuple[int, int] - additional size added to one side of each dimension
+    """
+    if isinstance(kernel_size, tuple):
+        kernel_h, kernel_w = kernel_size
+    else:
+        kernel_h, kernel_w = kernel_size, kernel_size
+    
+    if isinstance(stride, tuple):
+        stride_h, stride_w = stride
+    else:
+        stride_h, stride_w = stride, stride
+    
+    if isinstance(pad, tuple):
+        pad_h, pad_w = pad
+    else:
+        pad_h, pad_w = pad, pad
+    
+    if isinstance(dilation, tuple):
+        dil_h, dil_w = dilation
+    else:
+        dil_h, dil_w = dilation, dilation
+    
+    if isinstance(output_padding, tuple):
+        outpad_h, outpad_w = output_padding
+    else:
+        outpad_h, outpad_w = output_padding, output_padding
+    
+    h = (h_w[0] - 1) * stride_h - 2 * pad_h + dilation * (kernel_h - 1) + outpad_h + 1
+    w = (h_w[1] - 1) * stride_w - 2 * pad_w + dilation * (kernel_w - 1) + outpad_w + 1
+    return h, w
+
+
+class DecoderCNN(nn.Module):
+    def __init__(
+        self, 
+        output_height, 
+        output_width, 
+        device, 
+        depth=True, 
+        num_inputs=CNN_OUT_FEATURES*2
+    ):
+        super().__init__()
+        self.device = device
+        num_channels = 1 if depth else 3
+
+        self.linear = nn.Sequential(
+            nn.Linear(num_inputs, 512),
+            nn.GELU(),
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Linear(256, 128),
+        )
+
+        # Define the inverse operations to match the encoder's architecture
+        # Assuming the encoder had four Conv2d layers with kernel_size=6,4,4,4 and stride=2 each
+
+        # Initial feature vector size
+        # From encoder: After Conv2d and AdaptiveAvgPool2d to (1,1)
+        # So, to reverse, start from (128,1,1)
+
+        # Calculate the sizes dynamically
+        h_w = (1, 1)  # Starting from AdaptiveAvgPool2d((1,1))
+
+        # Layer 1: ConvTranspose2d from (128,1,1) -> (64,4,4)
+        h_w = convtranspose_output_size(h_w, kernel_size=4, stride=2, pad=0, dilation=1, output_padding=0)
+        layer1_norm_shape = [64, h_w[0], h_w[1]]
+
+        # Layer 2: ConvTranspose2d from (64,4,4) -> (32,8,8)
+        h_w = convtranspose_output_size(h_w, kernel_size=4, stride=2, pad=0, dilation=1, output_padding=0)
+        layer2_norm_shape = [32, h_w[0], h_w[1]]
+
+        # Layer 3: ConvTranspose2d from (32,8,8) -> (16,16,16) (Assuming kernel_size=4, stride=2, pad=0)
+        h_w = convtranspose_output_size(h_w, kernel_size=4, stride=2, pad=0, dilation=1, output_padding=0)
+        layer3_norm_shape = [16, h_w[0], h_w[1]]
+
+        # Layer 4: ConvTranspose2d from (16,16,16) -> (16,36,36) (Assuming kernel_size=6, stride=2, pad=0)
+        h_w = convtranspose_output_size(h_w, kernel_size=6, stride=2, pad=0, dilation=1, output_padding=0)
+        layer4_norm_shape = [16, h_w[0], h_w[1]]
+
+        # Calculate output size after all transposes
+        final_h_w = convtranspose_output_size(
+            h_w, 
+            kernel_size=6, 
+            stride=2, 
+            pad=0, 
+            dilation=1, 
+            output_padding=0
+        )
+
+        # CNN definition
+        self.cnn = nn.Sequential(
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=0, output_padding=0),  # 1x1 -> 4x4
+            nn.ReLU(),
+            nn.LayerNorm(layer1_norm_shape),  # Dynamically calculated layer norm
+
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=0, output_padding=0),   # 4x4 -> 8x8
+            nn.ReLU(),
+            nn.LayerNorm(layer2_norm_shape),  # Dynamically calculated layer norm
+
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=0, output_padding=0),   # 8x8 -> 16x16
+            nn.ReLU(),
+            nn.LayerNorm(layer3_norm_shape),  # Dynamically calculated layer norm
+
+            nn.ConvTranspose2d(16, 16, kernel_size=6, stride=2, padding=0, output_padding=0),   # 16x16 -> 36x36
+            nn.ReLU(),
+            nn.LayerNorm(layer4_norm_shape),  # Dynamically calculated layer norm
+
+            nn.ConvTranspose2d(16, num_channels, kernel_size=6, stride=2, padding=0, output_padding=0),  # 36x36 -> 76x76
+            nn.Sigmoid()  # Assuming input images are normalized between 0 and 1
+        )
+
+        # Calculate the required cropping or padding to match the exact output size
+        self.output_height = output_height
+        self.output_width = output_width
+
+    def forward(self, x):
+        # Pass through the linear layer to expand feature vector
+        x = self.linear(x)
+        # Reshape to match the expected input of the deconvolutional layers
+        x = x.view(-1, 128, 1, 1)
+        # Pass through the deconvolutional layers to reconstruct the image
+        x = self.cnn(x)
+        # Crop or pad the output to match the original image size if necessary
+        x = nn.functional.interpolate(x, size=(self.output_height, self.output_width), mode='bilinear', align_corners=False)
+        return x
+
+
 class A2CBuilder(NetworkBuilder):
     def __init__(self, **kwargs):
         NetworkBuilder.__init__(self)
@@ -342,7 +417,7 @@ class A2CBuilder(NetworkBuilder):
         def __init__(self, params, **kwargs):
             actions_num = kwargs.pop('actions_num')
             input_shape = kwargs.pop('input_shape') 
-            input_shape = (input_shape[0] + CNN_OUT_FEATURES,)
+            input_shape = (input_shape[0] + 2*CNN_OUT_FEATURES,)
             self.value_size = kwargs.pop('value_size', 1)
             self.num_seqs = num_seqs = kwargs.pop('num_seqs', 1)
 
@@ -352,15 +427,15 @@ class A2CBuilder(NetworkBuilder):
             self.critic_cnn = nn.Sequential()
             self.actor_mlp = nn.Sequential()
             self.critic_mlp = nn.Sequential()
-            
+
             if self.has_cnn:
                 if self.permute_input:
                     input_shape = torch_ext.shape_whc_to_cwh(input_shape)
                 cnn_args = {
-                    'ctype' : self.cnn['type'], 
-                    'input_shape' : input_shape, 
-                    'convs' :self.cnn['convs'], 
-                    'activation' : self.cnn['activation'], 
+                    'ctype' : self.cnn['type'],
+                    'input_shape' : input_shape,
+                    'convs' :self.cnn['convs'],
+                    'activation' : self.cnn['activation'],
                     'norm_func_name' : self.normalization,
                 }
                 self.actor_cnn = self._build_conv(**cnn_args)
@@ -448,31 +523,35 @@ class A2CBuilder(NetworkBuilder):
                             nn.Linear(self.aux_units[-1], aux_out_size),
                             self.activations_factory.create(self.aux_out_activation)
                         )
+                        # self.aux_networks[output_name] = torch.compile(self.aux_networks[output_name])
 
-            self.img_height = int(120*2)
-            self.img_width = int(160*2)
+            self.img_height = int(120 * 2)
+            self.img_width = int(160 * 2)
             self.use_depth = False
-            # self.feature_extractor = CustomCNN(
-            #     input_height=self.img_height,
-            #     input_width=self.img_width,
-            #     device="cuda", depth=self.use_depth
-            # )
-            self.feature_extractor = MonoEncoder(
-                backbone="convnext",
-                img_height=self.img_height,
-                img_width=self.img_width,
-                n_embd=None, n_head=4
+            self.feature_extractor = CustomCNN(
+                input_height=self.img_height,
+                input_width=self.img_width,
+                device="cuda", depth=self.use_depth
             )
+            # self.feature_extractor = torch.compile(self.feature_extractor)
+            self.depth_decoder = DecoderCNN(
+                output_width=self.img_width,
+                output_height=self.img_height,
+                device="cuda",
+                num_inputs=self.units[-1] + input_shape[0]
+            )
+            # self.depth_decoder = torch.compile(self.depth_decoder)
             mlp_args = {
-                'input_size' : in_mlp_shape, 
-                'units' : self.units, 
-                'activation' : self.activation, 
+                'input_size' : in_mlp_shape,
+                'units' : self.units,
+                'activation' : self.activation,
                 'norm_func_name' : self.normalization,
                 'dense_func' : torch.nn.Linear,
                 'd2rl' : self.is_d2rl,
                 'norm_only_first_layer' : self.norm_only_first_layer
             }
             self.actor_mlp = self._build_mlp(**mlp_args)
+            # self.actor_mlp = torch.compile(self.actor_mlp)
             self.running_mean_img = True
             num_channels = 1 if self.use_depth else 3
             self.running_mean_std = RunningMeanStd(
@@ -515,31 +594,52 @@ class A2CBuilder(NetworkBuilder):
                 if isinstance(m, nn.Linear):
                     mlp_init(m.weight)
                     if getattr(m, "bias", None) is not None:
-                        torch.nn.init.zeros_(m.bias)    
+                        torch.nn.init.zeros_(m.bias)
 
             if self.is_continuous:
                 mu_init(self.mu.weight)
                 if self.fixed_sigma:
                     sigma_init(self.sigma)
                 else:
-                    sigma_init(self.sigma.weight)  
+                    sigma_init(self.sigma.weight)
 
         def forward(self, obs_dict):
             obs = obs_dict['obs']
-            if "img" in obs_dict:
-                if self.use_depth:
-                    img = obs_dict["img"]
-                else:
-                    img = obs_dict["rgb"] #- torch.mean(
-                    #     obs_dict["rgb"], dim=(2, 3), keepdim=True
-                    # )
-                with torch.no_grad():
-                    if self.running_mean_img:
-                        img_tensor = self.running_mean_std(img)
-                    else:
-                        img_tensor = img
-                img_features = self.feature_extractor(img_tensor)
-                obs = torch.cat([obs, img_features], dim=-1)
+            if "img_left" in obs_dict:
+                img_left = obs_dict['img_left'] - torch.mean(
+                    obs_dict["img_left"], dim=(2, 3), keepdim=True
+                )
+                img_right = obs_dict['img_right'] - torch.mean(
+                    obs_dict["img_right"], dim=(2, 3), keepdim=True
+                )
+                
+                combined_embeds = self.feature_extractor(
+                    torch.cat([img_left, img_right], dim=0)
+                )
+
+                img_features_left, img_features_right = combined_embeds.chunk(
+                    2, dim=0
+                )
+                # img_features_left = self.feature_extractor(
+                #     img_left
+                # )
+                # img_features_right = self.feature_extractor(
+                #     img_right
+                # )
+                # imgs = torch.cat([img_left, img_right], dim=1)
+                # img_features = self.feature_extractor(imgs)
+                combined_img_embeds = torch.cat(
+                    [img_features_left, img_features_right],
+                    dim=-1
+                )
+                obs = torch.cat(
+                    [obs, combined_img_embeds],
+                    dim=-1
+                )
+                # obs = torch.cat(
+                #     [obs, img_features],
+                #     dim=-1
+                # )
             # obs = self.running_mean_std(obs_dict['observations'])
             # TODO: fix this and allow for normalization! 
             # obs = obs_dict["observations"]
@@ -689,13 +789,15 @@ class A2CBuilder(NetworkBuilder):
 
                 if self.is_aux:
                     self.last_aux_out = {}
-                    aux_input = self.aux_mlp(
-                        torch.cat(
-                            [out, concatenated_input], dim=-1
-                        )
+                    aux_inputs = torch.cat(
+                        [out, concatenated_input], dim=-1
                     )
+                    aux_input = self.aux_mlp(aux_inputs)
                     for output_name in self.aux_outputs:
                         self.last_aux_out[output_name] = self.aux_networks[output_name](aux_input)
+                    self.last_aux_out["left_img_depth"] = self.depth_decoder(
+                        aux_inputs
+                    )
 
                 value = self.value_act(self.value(out))
 

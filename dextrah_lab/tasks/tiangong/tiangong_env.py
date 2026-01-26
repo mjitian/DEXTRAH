@@ -272,6 +272,7 @@ class TiangongEnv(DirectRLEnv):
 
         # TODO 根据天工任务调整obs和state维度
         self.cfg.num_student_observations = 62
+        
         self.cfg.num_teacher_observations = 70 + num_unique_objects
         if self.cfg.distillation:
             self.cfg.num_observations = self.cfg.num_student_observations
