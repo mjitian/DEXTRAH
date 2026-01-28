@@ -224,7 +224,8 @@ class TiangongEnvCfg(DirectRLEnvCfg):
         0.000,   0.000,  0.000,  1.000
     ]).reshape(4, 4)
     camera_pos = tf[:3, 3].tolist()
-    camera_rot = [-0.645, 0.645, -0.291, 0.291]
+    # camera_rot = [w, x, y, z]
+    camera_rot = [0.291, -0.645, 0.645, -0.291]
     del tf
     # 略微随机化相机的位置和朝向
     camera_rand_rot_range = 3

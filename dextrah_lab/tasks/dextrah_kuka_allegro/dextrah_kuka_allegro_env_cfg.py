@@ -253,7 +253,7 @@ class DextrahKukaAllegroEnvCfg(DirectRLEnvCfg):
         0.000000000000000000e+00,0.000000000000000000e+00,0.000000000000000000e+00,1.000000000000000000e+00
     ]).reshape(4,4)
     camera_pos = tf[:3, 3].tolist()
-    # camera_rot = [0.6887834, -0.7242703, -0.0299371, -0.0106609]
+    # camera_rot = [w, x, y, z]
     camera_rot = [ 0.51567701, -0.52073085,  0.53658829,  0.41831759]
     del tf # this is hacky but it needs to be done because omega conf doesn't support np.ndarray as a primitive
     camera_rand_rot_range = 3
