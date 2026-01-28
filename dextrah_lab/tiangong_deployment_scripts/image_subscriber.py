@@ -12,10 +12,12 @@ HEIGHT = 480
 
 def object_image_to_tensor(msg):
     '''
-    msg: integer values 0-255 (encoding: '16UC1' or 'mono16')
+    msg: integer values 0-65,535 (encoding: '16UC1' or 'mono16')
          expected resolution: 640x480
     The learned model expects real values between -0.5 and -1.3.
     '''
+
+    print("encoding:", msg.encoding)
     img_np = np.frombuffer(msg.data, dtype=np.uint16).reshape(HEIGHT, WIDTH).astype(np.float32)
     img_np = cv2.resize(img_np, (WIDTH//4, HEIGHT//4), interpolation=cv2.INTER_LINEAR)
     #cv2.imwrite("output_image_unprocessed.png", img_np_to_save)
@@ -35,6 +37,7 @@ class ImageSubscriber(Node):
             Image,
             # 需要将深度图像和颜色图像
             # ros2 launch orbbec_camera gemini_330_series.launch.py depth_registration:=true
+            # ros2 launch orbbec_camera gemini_330_series.launch.py depth_width:=640 depth_height:=480 color_width:=640 color_height:=480
             '/camera/depth/image_raw',  
             self.listener_callback,
             10)

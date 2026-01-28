@@ -16,16 +16,12 @@ class AmazingHandController(Node):
         self.publish_dt = 1.0 / 100.0  # 60 Hz
         # Initialize joint state
         self.joint_state = JointState()
-        # self.joint_state.name = [
-        #     'thumb_joint_1_right', 'index_joint_1_right', 'middle_joint_1_right', 
-        #     'ring_joint_1_right'
-        # ]
         self.joint_state.name = [
             'Joint_A01_R', 'Joint_B01_R'
         ]
 
         self.joint_state.position = [0.0] * len(self.joint_state.name)
-        
+        self.joint_state.velocity = [0.0] * len(self.joint_state.name)
         # Mutex for thread safety
         self.joint_state_lock = Lock()
         
@@ -38,12 +34,6 @@ class AmazingHandController(Node):
             self.joint_state.header.stamp = self.get_clock().now().to_msg()
             self.joint_state_pub.publish(self.joint_state)
     
-    def set_joint_positions(self, positions):
-        with self.joint_state_lock:
-            if len(positions) != len(self.joint_state.position):
-                self.get_logger().error("Invalid number of joint positions provided.")
-                return
-            self.joint_state.position = positions
     def run(self):
         while rclpy.ok():
             print('amzing_hand_controller running...')

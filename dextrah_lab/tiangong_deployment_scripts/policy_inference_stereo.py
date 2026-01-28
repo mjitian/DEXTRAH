@@ -9,9 +9,7 @@ from rl_games.algos_torch import model_builder
 from rl_games.algos_torch.model_builder import ModelBuilder
 from rl_games.algos_torch import torch_ext
 
-from dextrah_lab.distillation.a2c_with_aux_cnn import A2CBuilder as A2CWithAuxCNNBuilder
-from dextrah_lab.distillation.a2c_with_aux_cnn_stereo import A2CBuilder as A2CWithAuxCNNStereoBuilder
-from dextrah_lab.distillation.a2c_stereo_transformer import A2CBuilder as A2CStereoTransformerBuilder
+from dextrah_lab.distillation_tiangong.a2c_mono_transformer import A2CBuilder as A2CMonoTransformerBuilder
 
 
 def load_param_dict(cfg_path):
@@ -88,7 +86,8 @@ class RLGamesPolicy:
 
         # load checkpoint if available
         if ckpt_path is not None:
-            weights = torch_ext.load_checkpoint(ckpt_path)
+            # weights = torch_ext.load_checkpoint(ckpt_path)
+            weights = torch.load(ckpt_path, map_location=self.device)
             weights["model"] = adjust_state_dict_keys(
                 weights["model"],
                 self.model.state_dict()
@@ -105,7 +104,7 @@ class RLGamesPolicy:
             self.hidden_states = [
                 s.to(self.device) for s in hidden_states
             ]
-
+        print(f"self.model.is_rnn(): {self.model.is_rnn()}")
         # dummy varibale, this doesn't actually contain prev actions
         # need this bc of rl_games weirdness...
         self.dummy_prev_actions = torch.zeros(
@@ -118,8 +117,7 @@ class RLGamesPolicy:
         batch_dict = {
             "is_train": True,
             "obs": proprio.repeat(2, 1),
-            "img_depth": depth_img.repeat(2, 1, 1, 1),
-            # "img_right": right_img.repeat(2, 1, 1, 1),
+            "img": depth_img.repeat(2, 1, 1, 1),
             "prev_actions": self.dummy_prev_actions,
             "finetune_backbone": False
         }
@@ -213,33 +211,25 @@ class RLGamesPolicy:
 def main():
     # get path to config file
     parent_path = str(pathlib.Path(__file__).parent.parent.parent.resolve())
-    agent_cfg_folder = "dextrah_lab/tasks/dextrah_kuka_allegro/agents"
+    agent_cfg_folder = "dextrah_lab/tasks/tiangong/agents"
     # 确定模型的类型
     student_cfg_path = os.path.join(
         parent_path,
         agent_cfg_folder,
-        # "rl_games_ppo_lstm_scratch_cnn_aux_stereo.yaml"
-        "rl_games_ppo_stereo_transformer.yaml"
+        "rl_games_ppo_mono_transformer.yaml"
     )
 
     # get path to checkpoint
     # NOTE: This assumes that in the root directory of dextrah_lab, the checkpoint is stored in a folder called pretrained_ckpts
-    student_ckpt = "pretrained_ckpts/dextrah_student_62000_iters.pth"
+    student_ckpt = "dextrah_lab/pretrained_ckpts_01_28/dextrah_student_5000_iters.pth"
     # 确定模型的权重文件位置
     student_ckpt_path = os.path.join(
         parent_path,
         student_ckpt
     )
-    student_ckpt_path = "/home/ritviks/workspace/git/dextrah_lab/dextrah_lab/distillation/runs/Dextrah-Kuka-Allegro_04-12-08-35/nn/dextrah_student_4000_iters.pth"
-    student_ckpt_path = None
-
-    student_ckpt_path = "/home/ritviks/workspace/dextrah_distillation_results/student_2_TEST.pth"
-
+    
     # register our custom model with the rl_games model builder
-    model_builder.register_network("a2c_aux_cnn_net", A2CWithAuxCNNBuilder)
-    model_builder.register_network("a2c_aux_cnn_net_stereo", A2CWithAuxCNNStereoBuilder)
-    model_builder.register_network("a2c_stereo_transformer", A2CStereoTransformerBuilder)
-
+    model_builder.register_network("a2c_mono_transformer", A2CMonoTransformerBuilder)
     num_proprio_obs = 62
     num_actions = 8
     img_shape = (1, 240, 320)
@@ -254,7 +244,7 @@ def main():
 
     dummy_proprio = torch.randn(1, num_proprio_obs).to(policy.device)
     dummy_depth_img = torch.randn(1, *img_shape).to(policy.device)
-    # dummy_right_img = torch.randn(1, *img_shape).to(policy.device)
+
     policy.reset_hidden_state()
 
     num_samples = 5
@@ -267,50 +257,22 @@ def main():
         torch.randn(1, *img_shape).to(policy.device)
         for _ in range(num_samples)
     ]
-    # dummy_right_imgs = [
-    #     torch.randn(1, *img_shape).to(policy.device)
-    #     for _ in range(num_samples)
-    # ]
+
     for i in range(num_samples):
         dummy_proprio = dummy_proprios[i]
         dummy_depth_img = dummy_depth_imgs[i]
-        # dummy_right_img = dummy_right_imgs[i]
+
         # forward
         start = time.time()
         policy_out_normal = policy.step(
             proprio=dummy_proprio,
             depth_img=dummy_depth_img,
-            # right_img=dummy_right_img,
         )
         policy.reset_hidden_state()
-        torch.cuda.synchronize()
         end = time.time()
         elapsed_time += end - start
         print(policy_out_normal)
     print(f"Average time taken normally: {elapsed_time / num_samples}")
-        
-    # Capture CUDA graph for model inference
-    # torch.cuda.synchronize()
-
-    # print("CUDA graph loaded")
-    # # torch.set_float32_matmul_precision('high')
-
-    # policy.reset_hidden_state()
-    # policy.setup_cuda_graph()
-    # for i in range(num_samples):
-    #     dummy_proprio = dummy_proprios[i]
-    #     dummy_depth_img = dummy_depth_imgs[i]
-    #     # dummy_right_img = dummy_right_imgs[i]
-    #     t1 = time.time()
-    #     policy_out_cuda_graph = policy.step_cuda_graph(
-    #         dummy_proprio, dummy_depth_img
-    #     )
-    #     torch.cuda.synchronize()
-    #     t2 = time.time()
-    #     print(f"Time taken: {t2 - t1}")
-    #     policy.reset_hidden_state()
-    #     print(policy_out_cuda_graph)
-
 
 
 if __name__ == "__main__":

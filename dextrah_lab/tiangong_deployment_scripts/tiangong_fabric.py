@@ -137,7 +137,7 @@ class TiangongFabricNode(Node):
             '/tiangong_fabric/pose_commands',
             self._tiangong_fabric_pose_command_sub_callback,
             1)
-
+        
         # Subscriber for getting hand commands
         self._tiangong_hand_command_sub = self.create_subscription(
             JointState,

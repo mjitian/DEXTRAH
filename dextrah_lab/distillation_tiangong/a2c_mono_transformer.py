@@ -13,7 +13,7 @@ from rl_games.common.layers.recurrent import GRUWithDones, LSTMWithDones
 from rl_games.common.layers.value import TwoHotEncodedValue, DefaultValue
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
-from dextrah_lab.distillation.mono_encoder import MonoEncoder
+from dextrah_lab.distillation_tiangong.mono_encoder import MonoEncoder
 
 
 def _create_initializer(func, **kwargs):
@@ -37,13 +37,13 @@ def get_standard_transform(device):
 
 
 class ResnetEncoder(nn.Module):
-    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
+    def __init__(self, input_height, input_width, device="cpu", train_resnet=True):
         super().__init__()
         self.device = device
 
         self.train_resnet = train_resnet
 
-        device = "cuda:0"
+        device = "cpu"
         self.resnet18 = torchvision.models.resnet18(
             weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
         ).to(torch.bfloat16)
@@ -451,7 +451,8 @@ class A2CBuilder(NetworkBuilder):
 
             self.img_height = int(120*2)
             self.img_width = int(160*2)
-            self.use_depth = False
+            # ????
+            self.use_depth = True
             # self.feature_extractor = CustomCNN(
             #     input_height=self.img_height,
             #     input_width=self.img_width,

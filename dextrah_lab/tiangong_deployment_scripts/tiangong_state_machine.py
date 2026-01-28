@@ -117,7 +117,9 @@ class DextrahStateMachineNode(Node):
         # State machine states
         # Set a default pose target to revert to after successfully grasping object
         self.default_pose_target = \
-            np.array([-0.6868, 0.0320, 0.685, -2.3873, -0.0824, 3.1301]).astype(float)
+            np.array([0.449, -0.222, 1.196, 0.335, 1.035, -2.895]).astype(float)
+        # self.default_pose_target = \
+        #     np.array([0.449, -0.222, 1.196, -2.895, 1.035, 0.335]).astype(float)
         
         self.default_hand_target = \
             np.array([0., 0.]).astype(float)
@@ -127,7 +129,7 @@ class DextrahStateMachineNode(Node):
             np.array([0., 0.]).astype(float)
         # TODO 确定目标位置
         self.box_pose_target = \
-            np.array([0.140, -0.568, 1.048, -1.642, 0.797, -0.110]).astype(float)
+            np.array([0.222, -0.4, 1.196, 0.335, 1.035, -2.895]).astype(float)
         
         self.open_hand_target = \
             np.array([0., 0.]).astype(float)

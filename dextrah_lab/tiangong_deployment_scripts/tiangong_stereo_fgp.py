@@ -9,7 +9,7 @@ import argparse
 # ROS imports
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped, TransformStamped
+from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import JointState, Image
 from tf2_ros import TransformBroadcaster
 from std_msgs.msg import Bool
@@ -26,8 +26,6 @@ import cv2
 
 # RL games
 from rl_games.algos_torch import model_builder
-from rl_games.algos_torch.model_builder import ModelBuilder
-from rl_games.algos_torch import torch_ext
 
 # Fabrics
 from fabrics_sim.utils.path_utils import get_robot_urdf_path
@@ -47,12 +45,9 @@ from dextrah_lab.tasks.tiangong.tiangong_constants import (
 )
 
 # Dextrah FGP
-from dextrah_lab.distillation.a2c_with_aux_cnn_stereo import A2CBuilder as A2CWithAuxCNNStereoBuilder
-from dextrah_lab.distillation.a2c_stereo_transformer import A2CBuilder as A2CStereoTransformerBuilder
-from dextrah_lab.deployment_scripts.policy_inference_stereo import RLGamesPolicy as DextrAHFGP
+from dextrah_lab.distillation_tiangong.a2c_mono_transformer import A2CBuilder as A2CMonoTransformerBuilder
+from dextrah_lab.tiangong_deployment_scripts.policy_inference_stereo import RLGamesPolicy as DextrAHFGP
 
-from bodyctrl_msgs.msg import CmdSetMotorPosition
-from bodyctrl_msgs.msg import SetMotorPosition
 from bodyctrl_msgs.msg import MotorStatusMsg
 
 # TODO: 由双RGB相机, 改为深度相机
@@ -108,6 +103,14 @@ class DextrahFGPNode(Node):
         # TOOD: 确定观测值数量
         self.num_obs = 62
 
+        # TODO 定义关节名称
+        # arm-right 20 + id
+        self.arm_controlled_joints = [21, 22, 23, 24, 25, 26, 27]
+        self.hand_controlled_joints = [
+            "Joint_A01_R",
+            "Joint_B01_R",
+        ]
+
         # Set the warp cache directory based on device
         warp_cache_dir = ""
         initialize_warp(self.device)
@@ -116,9 +119,7 @@ class DextrahFGPNode(Node):
         self.bridge = CvBridge()
 
         # Camera subscriber
-        # self._left_image_lock = Lock()
         self._depth_image_lock = Lock()
-        # self._left_image = None
         self._depth_image = None
         self._image_height = 480
         self._image_width = 640
@@ -265,63 +266,21 @@ class DextrahFGPNode(Node):
         student_cfg_path = os.path.join(
             parent_path,
             agent_cfg_folder,
-            # TODO: 选择配置文件
-            #"rl_games_ppo_lstm_scratch_cnn_aux_stereo.yaml",
-            # "rl_games_ppo_stereo_transformer.yaml"
-            "rl_games_ppo_lstm_cfg.yaml"
+            "rl_games_ppo_mono_transformer.yaml"
         )
 
         # get path to checkpoint
         # NOTE: This assumes that in the root directory of dextrah_lab, the checkpoint is stored in a folder called pretrained_ckpts
-        # First RGB student that transferred
-        #student_ckpt = "pretrained_ckpts/dextrah_student_85000_iters.pth"
-        #student_ckpt = "pretrained_ckpts/dextrah_student_nov1_3_iters.pth"
-        #student_ckpt = "pretrained_ckpts/dextrah_student_66000_iters.pth"
-        #student_ckpt = "pretrained_ckpts/rnn/new_dextrah_student_4.pth"
-        #student_ckpt = "pretrained_ckpts/rnn/student_2_flipped.pth"
-        #student_ckpt = "pretrained_ckpts/rnn/dextrah_10x_seed3.pth"
-        #student_ckpt = "pretrained_ckpts/rnn/dextrah_512_kpt_seed_3.pth"
-        
-        #student_ckpt = "pretrained_ckpts/rnn/dextrah_new_arch_scratch_cnn_seed_3.pth"
-        
-        # NOTE: current best
-        #student_ckpt = "pretrained_ckpts/rnn/dextrah_new_arch_resnet18_seed_3.pth"
-
-        #student_ckpt = "pretrained_ckpts/rnn/wider_large_scale_pos_embed_seed_4.pth"
-        #student_ckpt = "pretrained_ckpts/rnn/wider_large_scale_seed_4.pth"
-        
-        #student_ckpt = "pretrained_ckpts/rnn/new_obj_prims_seed_7.pth"
-        #student_ckpt = "pretrained_ckpts/rnn/stereo_aux_10_seed_7.pth"
-        student_ckpt = "pretrained_ckpts/rnn/student_1_TEST.pth"
-        
-        # student_ckpt = "pretrained_ckpts/rnn/dextrah_resnet_scaled_seed_7.pth"
-        
-        # student_ckpt = "pretrained_ckpts/rnn/dextrah_resnet_kpt_seed_2.pth"
-        
-        # student_ckpt = "pretrained_ckpts/rnn/dexrah_resnet_scale_seed_4.pth"
-
-        # student_ckpt = "pretrained_ckpts/rnn/dextrah_8192_kpt_seed_2.pth"
-        # student_ckpt = "pretrained_ckpts/rnn/new_dextrah_student_60000_iters.pth"
-        # student_ckpt = "pretrained_ckpts/rnn/dextrah_student_109000_iters.pth"
-        # student_ckpt = "pretrained_ckpts/rnn/new_dextrah_student_18000_iters.pth"
-        # student_ckpt = "pretrained_ckpts/rnn/new_dextrah_student_cam_jitter.pth"
-        # student_ckpt = "pretrained_ckpts/rnn/new_dextrah_student_2k_1.pth"
-        # student_ckpt = "pretrained_ckpts/rnn/dextrah_student_4000_iters.pth"
-        # student_ckpt = "pretrained_ckpts/rnn/dextrah_student_152000_iters.pth"
-        # student_ckpt = "pretrained_ckpts/dextrah_student_24000_iters.pth"
-        # student_ckpt = "pretrained_ckpts/dextrah_student_16000_iters.pth"
+        student_ckpt = "pretrained_ckpts_01_28/dextrah_student_5000_iters.pth"
         student_ckpt_path = os.path.join(
             parent_path,
             student_ckpt
         )
 
         # register our custom model with the rl_games model builder
-        #model_builder.register_network("a2c_aux_cnn_net_stereo", A2CWithAuxCNNStereoBuilder)
         # TODO: 选择模型类型
-        model_builder.register_network("a2c_stereo_transformer", A2CStereoTransformerBuilder)
+        model_builder.register_network("a2c_mono_transformer", A2CMonoTransformerBuilder)
 
-        num_proprio_obs = 159
-        num_actions = 8
         img_shape = (1, 240, 320)
         # create the model
         self.dextrah_fgp = DextrAHFGP(
@@ -358,19 +317,13 @@ class DextrahFGPNode(Node):
 #
 #        cv2.waitKey(1)
 
-        # Reshape into (3, height, width)
-        # img_np = np.transpose(img_np, (2, 0, 1))
+        # Reshape into (1, height, width)
         img_np = img_np[np.newaxis, :, :]
-
-        # Scale to be between [0, 1]
-        # img_np /= 255.
-
         # Move to torch tensor and make sure shape is 1x1xhxw
         with self._depth_image_lock:
             self.camera_depth_feedback_time = time.time()
             self._depth_image = torch.from_numpy(img_np).to(self.device).unsqueeze(0)
             # Now flip
-            # self._depth_image = torch.flip(self._depth_image, dims=(2,3))
 
     def _tiangong_sub_callback(self, msg):
         """
@@ -381,12 +334,12 @@ class DextrahFGPNode(Node):
         :param msg: ROS 2 MotorStatus message type
         """
 
-        # Create GPU pytorch tensors
-        positions = [0.] * len(msg.status)
-        velocities = [0.] * len(msg.status)
+        positions = [0.] * len(self.arm_controlled_joints)
+        velocities = [0.] * len(self.arm_controlled_joints)
         for motor_status in msg.status:
-            positions[motor_status.name - 21] = motor_status.position
-            velocities[motor_status.name - 21] = motor_status.velocity
+            if motor_status.name in self.arm_controlled_joints:
+                positions[motor_status.name - 21] = motor_status.pos
+                velocities[motor_status.name - 21] = motor_status.speed
         position_tensor = torch.tensor(
             np.array([positions]), device=self.device
             )
@@ -610,14 +563,6 @@ class DextrahFGPNode(Node):
                 print('no feedback from depth camera')
                 feedback_timed_out = True
             depth_image = torch.clone(self._depth_image)
-
-        # right_image = None
-        # with self._depth_image_lock:
-        #     end = time.time()
-        #     if (end - self.camera_depth_feedback_time) > (3. * self._publish_dt): 
-        #         print('no feedback from right camera')
-        #         feedback_timed_out = True
-        #     right_image = torch.clone(self._depth_image)
 
         return state, depth_image, feedback_timed_out
     

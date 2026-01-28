@@ -107,13 +107,13 @@ def get_standard_transform(device):
 
 
 class ResnetEncoder(nn.Module):
-    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
+    def __init__(self, input_height, input_width, device="cpu", train_resnet=True):
         super().__init__()
         self.device = device
 
         self.train_resnet = train_resnet
 
-        device = "cuda:0"
+        device = "cpu"
         self.resnet18 = torchvision.models.resnet18(
             weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1
         ).to(torch.bfloat16)
@@ -148,13 +148,13 @@ class ResnetEncoder(nn.Module):
         return out
 
 class ConvNextEncoder(nn.Module):
-    def __init__(self, input_height, input_width, device="cuda", train_resnet=True):
+    def __init__(self, input_height, input_width, device="cpu", train_resnet=True):
         super().__init__()
         self.device = device
 
         self.train_resnet = train_resnet
 
-        device = "cuda:0"
+        device = "cpu"
         self.convnext = torchvision.models.convnext_tiny(
             weights=torchvision.models.ConvNeXt_Tiny_Weights.DEFAULT
         ).to(torch.bfloat16)
@@ -394,14 +394,14 @@ class MonoEncoder(nn.Module):
     ):
         super().__init__()
         self.backbone = backbone
-        self.cnn = MODEL_SETTINGS[backbone]["model"](img_height, img_width, "cuda")
+        self.cnn = MODEL_SETTINGS[backbone]["model"](img_height, img_width, "cpu")
         self.num_tokens = MODEL_SETTINGS[backbone]["num_tokens"]
         if n_embd is None:
             n_embd = MODEL_SETTINGS[backbone]["n_embd"]
         self.out_embd = n_embd # 8
         self.transformer = Transformer(n_embd, self.out_embd, self.num_tokens, n_embd, n_head, 2)
         self.n_embd = n_embd
-        # self.keypoint_head = KeypointModule("cuda")
+        # self.keypoint_head = KeypointModule("cpu")
 
         self.out_layer = nn.Sequential(
             nn.Linear(self.out_embd, 128),
@@ -432,13 +432,13 @@ def main():
     batch_size = 144
 
     img_tensor_left = torch.tensor(np.array(im_left)).permute(2, 0, 1).unsqueeze(0) / 255.
-    imgs = img_tensor_left.repeat(batch_size, 1, 1, 1).to("cuda")
+    imgs = img_tensor_left.repeat(batch_size, 1, 1, 1).to("cpu")
     backbone = "convnext"
     mono_encoder = MonoEncoder(
         backbone=backbone,
         img_height=240, img_width=320,
         n_embd=MODEL_SETTINGS[backbone]["n_embd"], n_head=4
-    ).to("cuda")
+    ).to("cpu")
     out = mono_encoder(imgs)
     breakpoint()
 
