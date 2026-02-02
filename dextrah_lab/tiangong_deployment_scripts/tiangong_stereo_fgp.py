@@ -271,7 +271,7 @@ class DextrahFGPNode(Node):
 
         # get path to checkpoint
         # NOTE: This assumes that in the root directory of dextrah_lab, the checkpoint is stored in a folder called pretrained_ckpts
-        student_ckpt = "pretrained_ckpts_01_28/dextrah_student_5000_iters.pth"
+        student_ckpt = "pretrained_ckpts_01_29/dextrah_student_60000_iters.pth"
         student_ckpt_path = os.path.join(
             parent_path,
             student_ckpt

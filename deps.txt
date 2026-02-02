@@ -5,3 +5,4 @@ urdfpy
 numpy>=1.23.5,<2.0.0
 rl-games
 torchvision
+rustypot

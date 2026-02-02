@@ -13,6 +13,7 @@ urdfpy = "^0.0.22"
 numpy = ">=1.23.5,<2.0.0"
 rl-games = "^1.6.1"
 torchvision = ">=0.19.0"
+rustypot = "*"
 
 [tool.poetry.dev-dependencies]
 
